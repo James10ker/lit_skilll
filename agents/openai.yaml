@@ -1,0 +1,7 @@
+interface:
+  display_name: "论文综述复现生成"
+  short_description: "按参考综述合成报告与图表"
+  brand_color: "#2563EB"
+  default_prompt: "Use $literature-review-skill to reproduce a reference review by matching its data sources, research questions, chart types, and comparison criteria."
+policy:
+  allow_implicit_invocation: true
