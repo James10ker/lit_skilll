@@ -53,6 +53,31 @@ python3 tools/pdf_extract_figures.py --input outputs/topic/papers/paper.pdf --ou
 
 不要尝试绕过登录、验证码、付费墙或站点访问限制。下载失败时，在综述交付说明中记录失败原因。
 
+## 综述参考文献元数据爬取
+
+```bash
+python3 tools/crawl_review_references.py \
+  --input path/to/review.pdf \
+  --output-dir outputs/review_reference_crawl
+```
+
+脚本会从综述 PDF 中抽取参考文献条目，并通过 Crossref、OpenAlex、Semantic Scholar 等公开元数据接口补充题名、年份、DOI、URL 和开放 PDF 链接。输出：
+
+- `references.csv`：便于后续筛选、统计和人工核验。
+- `references.json`：保留完整结构化结果。
+- `references.md`：快速预览表。
+
+如需尝试下载公开 PDF，可加：
+
+```bash
+python3 tools/crawl_review_references.py \
+  --input path/to/review.pdf \
+  --output-dir outputs/review_reference_crawl \
+  --download-open-pdf
+```
+
+该选项只下载参考文献中已有的公开 PDF URL 或公共元数据接口暴露的开放 PDF，不绕过登录、验证码或付费墙。
+
 ## 修订记录
 
 `iteration_dialog_log.py` 可作为通用追加日志工具使用。论文综述场景建议日志名为：
