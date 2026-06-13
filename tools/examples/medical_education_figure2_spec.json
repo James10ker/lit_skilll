@@ -1,0 +1,40 @@
+{
+  "title": "Figure 2. Data collection and analyses",
+  "stage_labels": [
+    "Identification",
+    "Screening",
+    "Included"
+  ],
+  "left_caption": "Data collection and filtering",
+  "right_caption": "Data analysis: publication trends, source distribution, collaboration patterns, topic evolution, and citation structure",
+  "strategy_boxes": [
+    {
+      "text": "Strategy one (database search):\nWeb of Science, PubMed, and Scopus\n(N=18426)"
+    },
+    {
+      "text": "Strategy two (additional search):\npublications in Medical Education, Academic Medicine, and AMEE conference proceedings\n(N=864)"
+    }
+  ],
+  "total_box": "Total publications retrieved from database search and additional search\n(N=19290)",
+  "duplicate_label": "Duplicated publication exclusion",
+  "manual_box": "Publications included for manual screening and filtering\n(N=9320)",
+  "excluded_box": "9970 publications were excluded:\n1) not related to medical education;\n2) no use of AI;\n3) about general health informatics only;\n4) e-learning systems without AI techniques;\n5) deep learning mention not about educational application;\n6) review, editorial, or commentary papers without concrete instructional scenarios",
+  "analysis_box": "Publications included for data analysis\n(N=4552)",
+  "citation_box": "Collect the number of citations received by each publication in Google Scholar",
+  "analysis_steps": [
+    "Trend analysis of annual publications",
+    "Identification of leading journals, countries/regions, and institutions",
+    "Visualization of the scientific collaboration",
+    "Topic identification, research hotspots, and trend analyses"
+  ],
+  "connector_styles": {
+    "strategy_one_to_total": "arrow",
+    "strategy_two_to_total": "arrow",
+    "total_to_manual": "arrow",
+    "total_to_duplicate": "line",
+    "manual_to_excluded": "line",
+    "manual_to_analysis": "arrow",
+    "analysis_to_citation": "line",
+    "analysis_panel_arrow": "arrow"
+  }
+}

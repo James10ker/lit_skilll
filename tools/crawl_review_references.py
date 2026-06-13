@@ -22,6 +22,8 @@ import argparse
 import csv
 import json
 import re
+import shutil
+import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, field
@@ -66,10 +68,8 @@ class ReferenceRecord:
 def _require_fitz():
     try:
         import fitz  # PyMuPDF
-    except ImportError as exc:
-        raise SystemExit(
-            "PyMuPDF is required. Install dependencies with: pip install -r requirements.txt"
-        ) from exc
+    except ImportError:
+        return None
     return fitz
 
 
@@ -86,11 +86,30 @@ def _clean_text(text: str) -> str:
 
 def extract_pdf_text(input_pdf: Path) -> str:
     fitz = _require_fitz()
-    doc = fitz.open(input_pdf)
-    pages = []
-    for page in doc:
-        pages.append(page.get_text("text") or "")
-    return _clean_text("\n".join(pages))
+    if fitz is not None:
+        doc = fitz.open(input_pdf)
+        pages = []
+        for page in doc:
+            pages.append(page.get_text("text") or "")
+        return _clean_text("\n".join(pages))
+
+    pdftotext = shutil.which("pdftotext")
+    if not pdftotext:
+        raise SystemExit(
+            "PyMuPDF is not installed and pdftotext is unavailable. "
+            "Install dependencies with: pip install -r requirements.txt"
+        )
+
+    try:
+        result = subprocess.run(
+            [pdftotext, str(input_pdf), "-"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(f"pdftotext failed for {input_pdf}: {exc.stderr.strip()}") from exc
+    return _clean_text(result.stdout)
 
 
 def _find_reference_text(full_text: str) -> str:

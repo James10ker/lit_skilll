@@ -27,6 +27,66 @@ python3 tools/mermaid_render.py -i path/to/review.md -o path/to/review_rendered.
 
 将 Markdown 中的 fenced `mermaid` 图渲染为 PNG，便于嵌入 Word。适合分类框架图、研究路线图、方法谱系图和时间线。
 
+## 综述 Figure 1 专用流程图
+
+```bash
+python3 tools/render_review_figure1.py \
+  --spec tools/examples/aied_figure1_spec.json \
+  --output outputs/figures/aied_figure1.svg
+```
+
+用于生成接近示例综述 Figure 1 的“文献收集与分析流程图”。脚本现在内建一条稳定流水线：
+
+`Graph IR -> 逻辑校验 -> 初次渲染 -> 布局质量评估 -> SVG bbox 检查 -> Graphviz JSON 坐标检查 -> PNG 边缘像素检查 -> 自动重排/加约束 -> 再次渲染 -> 可读性检查 -> 最终输出`
+
+这意味着大模型不是“直接画”，而是先产出结构化 spec，再由脚本完成拓扑检查和版式兜底。
+
+输出：
+
+- `*.svg`：可直接嵌入 Markdown、Word、网页或后续转 PNG。
+
+建议流程：
+
+1. 大模型先生成一份 JSON spec。
+2. 用 `python3 tools/render_review_figure1.py --output ... --report ...` 出图并落盘评估报告。
+3. 若只是换数字、数据库名或排除理由，只改 JSON，不改脚本。
+
+常用命令：
+
+```bash
+python3 tools/render_review_figure1.py --dump-template
+python3 tools/render_review_figure1.py --spec tools/examples/aied_figure1_spec.json --dump-ir
+python3 tools/render_review_figure1.py --spec tools/examples/aied_figure1_spec.json --validate-only --report outputs/figures/aied_figure1.report.json
+python3 tools/render_review_figure1.py --spec tools/examples/aied_figure1_spec.json --output outputs/figures/aied_figure1.svg --report outputs/figures/aied_figure1.report.json
+```
+
+如需控制哪些连线带箭头，可在 spec 中填写：
+
+```json
+"connector_styles": {
+  "strategy_one_to_total": "arrow",
+  "strategy_two_to_total": "arrow",
+  "total_to_manual": "arrow",
+  "total_to_duplicate": "arrow",
+  "manual_to_excluded": "arrow",
+  "manual_to_analysis": "arrow",
+  "analysis_to_citation": "arrow",
+  "analysis_panel_arrow": "arrow"
+}
+```
+
+值可用 `arrow` 或 `line`。这让大模型不仅能填内容，也能明确声明某条边是“流程箭头”还是“无方向辅助线”。
+
+`--dump-ir` 可直接输出 Graph IR，便于后面让大模型先生成节点/边语义，再映射为图。
+
+`--report` 会记录：
+
+- 布局评分与重叠/溢出检查
+- `SVG bbox` 边界留白检查
+- `Graphviz JSON` 坐标与相对顺序检查
+- `PNG` 边缘墨迹像素检查
+- 是否触发了自动修复重渲染
+
 ## PDF 图表抽取
 
 ```bash
