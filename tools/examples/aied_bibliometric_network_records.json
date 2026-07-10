@@ -1,0 +1,58 @@
+{
+  "records": [
+    {
+      "title": "Intelligent tutoring systems for adaptive learning",
+      "authors": ["Smith, J.", "Chen, L.", "Garcia, M."],
+      "journal": "Computers & Education",
+      "year": 2019,
+      "topics": ["Intelligent tutoring systems", "Adaptive learning"],
+      "affiliations": ["Arizona State University", "Tsinghua University"],
+      "citations": 184
+    },
+    {
+      "title": "Educational data mining for learner prediction",
+      "authors": ["Chen, L.", "Kumar, R.", "Wilson, A."],
+      "journal": "IEEE Transactions on Learning Technologies",
+      "year": 2020,
+      "topics": ["Educational data mining", "Learner prediction"],
+      "affiliations": ["Tsinghua University", "Carnegie Mellon University"],
+      "citations": 231
+    },
+    {
+      "title": "Affective computing in online learning",
+      "authors": ["Garcia, M.", "Nakamura, H."],
+      "journal": "Educational Technology & Society",
+      "year": 2021,
+      "topics": ["Affective computing", "Online learning"],
+      "affiliations": ["University of Tokyo", "Arizona State University"],
+      "citations": 96
+    },
+    {
+      "title": "Recommender systems for personalized learning paths",
+      "authors": ["Wilson, A.", "Brown, S.", "Smith, J."],
+      "journal": "British Journal of Educational Technology",
+      "year": 2022,
+      "topics": ["Recommender systems", "Personalized learning"],
+      "affiliations": ["Carnegie Mellon University", "University of Edinburgh"],
+      "citations": 143
+    },
+    {
+      "title": "Knowledge tracing with neural networks",
+      "authors": ["Kumar, R.", "Nakamura, H.", "Li, Y."],
+      "journal": "Computers & Education",
+      "year": 2023,
+      "topics": ["Knowledge tracing", "Neural networks"],
+      "affiliations": ["Carnegie Mellon University", "University of Tokyo"],
+      "citations": 117
+    },
+    {
+      "title": "Natural language processing for writing feedback",
+      "authors": ["Li, Y.", "Brown, S.", "Chen, L."],
+      "journal": "International Journal of Artificial Intelligence in Education",
+      "year": 2024,
+      "topics": ["Natural language processing", "Writing feedback"],
+      "affiliations": ["Tsinghua University", "University of Edinburgh"],
+      "citations": 72
+    }
+  ]
+}

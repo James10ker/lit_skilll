@@ -106,6 +106,28 @@ BODY_TEXT_PAD_Y = 38
 BOX_GAP_TOLERANCE = 8
 CONNECTOR_COLOR = "#111111"
 PANEL_PADDING_BALANCE_TOLERANCE = 32.0
+ALIGNMENT_TOLERANCE = 4.0
+GAP_VARIANCE_TOLERANCE = 6.0
+SIZE_VARIANCE_TOLERANCE = 6.0
+MAX_EDGE_CROSSINGS = 0
+MAX_TEXT_LINE_UNITS = 34.0
+MIN_TEXT_PIXEL_HEIGHT = 12.0
+MIN_INTER_PANEL_GAP = 48.0
+MAX_INTER_PANEL_GAP = 100.0
+MAX_INTER_PANEL_GAP_RATIO = 0.12
+BIG_ARROW_TAIL_INSET = 15.0
+BIG_ARROW_TIP_INSET = 15.0
+MIN_BIG_ARROW_LENGTH = 48.0
+PREFERRED_BIG_ARROW_LENGTH = 64.0
+MAX_BIG_ARROW_LENGTH = 96.0
+MIN_CONTENT_WIDTH_RATIO = 0.78
+MAX_CONTENT_WIDTH_RATIO = 0.92
+MIN_LEFT_PANEL_SHARE = 0.60
+MAX_LEFT_PANEL_SHARE = 0.68
+MIN_RIGHT_PANEL_SHARE = 0.22
+MAX_RIGHT_PANEL_SHARE = 0.30
+MIN_GAP_SHARE = 0.04
+MAX_GAP_SHARE = 0.08
 STAGE_PILLS = {
     "identification": (92.0, 275.0, 42.0, 170.0),
     "screening": (92.0, 605.0, 42.0, 150.0),
@@ -211,6 +233,17 @@ class LayoutMetrics:
     overlaps: list[str]
     overlap_safety: dict[str, Any]
     panel_padding_balance: dict[str, Any]
+    alignment_consistency: dict[str, Any]
+    group_size_normalization: dict[str, Any]
+    edge_routing_quality: dict[str, Any]
+    anchor_consistency: dict[str, Any]
+    visual_hierarchy: dict[str, Any]
+    text_style_consistency: dict[str, Any]
+    semantic_layout_contract: dict[str, Any]
+    inter_panel_gap: dict[str, Any]
+    connector_arrow_length: dict[str, Any]
+    canvas_utilization: dict[str, Any]
+    panel_layout_contract: dict[str, Any]
     text_overflows: list[str]
     alignment_deltas: dict[str, float]
     readability_passed: bool
@@ -479,6 +512,24 @@ def draw_large_arrow(x1: float, y: float, x2: float) -> str:
     return f'<polygon points="{serialized}" fill="#8ab2ef" opacity="0.95"/>'
 
 
+def _panel_right(panel: tuple[float, float, float, float]) -> float:
+    return panel[0] + panel[2]
+
+
+def _inter_panel_gap(layout: LayoutResult) -> float:
+    return layout.right_panel[0] - _panel_right(layout.left_panel)
+
+
+def _big_arrow_bounds(layout: LayoutResult) -> tuple[float, float]:
+    tail_x = _panel_right(layout.left_panel) + BIG_ARROW_TAIL_INSET
+    tip_x = layout.right_panel[0] - BIG_ARROW_TIP_INSET
+    return tail_x, tip_x
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
 def draw_line(x1: float, y1: float, x2: float, y2: float, stroke_width: float = 2.6) -> str:
     return (
         f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
@@ -669,6 +720,479 @@ def check_panel_padding_balance(layout: LayoutResult) -> dict[str, Any]:
     }
 
 
+def _box_rect(box: Box, *, pad: float = 0.0) -> tuple[float, float, float, float]:
+    return (box.x - pad, box.y - pad, box.w + pad * 2, box.h + pad * 2)
+
+
+def _box_center(box: Box) -> tuple[float, float]:
+    return (box.x + box.w / 2, box.y + box.h / 2)
+
+
+def _nearly_equal(a: float, b: float, tolerance: float) -> bool:
+    return abs(a - b) <= tolerance
+
+
+def _variance(values: list[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    mean = sum(values) / len(values)
+    return sum((value - mean) ** 2 for value in values) / len(values)
+
+
+def _edge_paths(layout: LayoutResult) -> dict[str, list[tuple[float, float]]]:
+    boxes = layout.boxes
+    total = boxes["total_box"]
+    manual = boxes["manual_box"]
+    analysis = boxes["analysis_box"]
+    citation = boxes["citation_box"]
+    strategy1 = boxes["strategy_one"]
+    strategy2 = boxes["strategy_two"]
+    duplicate = boxes["duplicate_label"]
+    excluded = boxes["excluded_box"]
+
+    shared_merge_y = total.y - 28
+    duplicate_branch_y = duplicate.y + duplicate.h / 2
+    excluded_branch_y = manual.y + manual.h + 36
+    return {
+        "strategy_one_to_total": [
+            (strategy1.x + strategy1.w / 2, strategy1.y + strategy1.h),
+            (strategy1.x + strategy1.w / 2, shared_merge_y),
+            (total.x + total.w / 2, shared_merge_y),
+            (total.x + total.w / 2, total.y),
+        ],
+        "strategy_two_to_total": [
+            (strategy2.x + strategy2.w / 2, strategy2.y + strategy2.h),
+            (strategy2.x + strategy2.w / 2, shared_merge_y),
+            (total.x + total.w / 2, shared_merge_y),
+            (total.x + total.w / 2, total.y),
+        ],
+        "total_to_manual": [
+            (total.x + total.w / 2, total.y + total.h),
+            (manual.x + manual.w / 2, manual.y),
+        ],
+        "total_to_duplicate": [
+            (total.x + total.w / 2, duplicate_branch_y),
+            (duplicate.x, duplicate_branch_y),
+        ],
+        "manual_to_excluded": [
+            (manual.x + manual.w / 2, excluded_branch_y),
+            (excluded.x, excluded_branch_y),
+        ],
+        "manual_to_analysis": [
+            (manual.x + manual.w / 2, manual.y + manual.h),
+            (analysis.x + analysis.w / 2, analysis.y),
+        ],
+        "analysis_to_citation": [
+            (analysis.x + analysis.w, analysis.y + analysis.h / 2),
+            (citation.x, analysis.y + analysis.h / 2),
+        ],
+    }
+
+
+def _segments(points: list[tuple[float, float]]) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    return list(zip(points, points[1:]))
+
+
+def _point_in_rect(point: tuple[float, float], rect: tuple[float, float, float, float]) -> bool:
+    x, y = point
+    rx, ry, rw, rh = rect
+    return rx <= x <= rx + rw and ry <= y <= ry + rh
+
+
+def _segment_intersects_rect(
+    a: tuple[float, float],
+    b: tuple[float, float],
+    rect: tuple[float, float, float, float],
+) -> bool:
+    rx, ry, rw, rh = rect
+    corners = [(rx, ry), (rx + rw, ry), (rx + rw, ry + rh), (rx, ry + rh)]
+    edges = list(zip(corners, corners[1:] + corners[:1]))
+    return _point_in_rect(a, rect) or _point_in_rect(b, rect) or any(
+        _segments_cross(a, b, c, d) for c, d in edges
+    )
+
+
+def _orientation(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> float:
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+
+def _segments_cross(
+    a: tuple[float, float],
+    b: tuple[float, float],
+    c: tuple[float, float],
+    d: tuple[float, float],
+) -> bool:
+    # Proper crossing only. Shared endpoints and collinear overlaps are route sharing, not visual crossing.
+    if a in {c, d} or b in {c, d}:
+        return False
+    o1 = _orientation(a, b, c)
+    o2 = _orientation(a, b, d)
+    o3 = _orientation(c, d, a)
+    o4 = _orientation(c, d, b)
+    return (o1 * o2 < 0) and (o3 * o4 < 0)
+
+
+def check_alignment_consistency(layout: LayoutResult) -> dict[str, Any]:
+    boxes = layout.boxes
+    row_errors: list[str] = []
+    column_errors: list[str] = []
+    gap_values: list[float] = []
+    size_values: list[float] = []
+
+    top_sources = [boxes["strategy_one"], boxes["strategy_two"]]
+    if not _nearly_equal(top_sources[0].y, top_sources[1].y, ALIGNMENT_TOLERANCE):
+        row_errors.append("top source boxes are not top-aligned")
+    if not _nearly_equal(top_sources[0].h, top_sources[1].h, SIZE_VARIANCE_TOLERANCE):
+        row_errors.append("top source boxes have inconsistent heights")
+    gap_values.append(top_sources[1].x - (top_sources[0].x + top_sources[0].w))
+    size_values.extend([box.w for box in top_sources] + [box.h for box in top_sources])
+
+    main_spine = [boxes["total_box"], boxes["manual_box"], boxes["analysis_box"]]
+    centers = [_box_center(box)[0] for box in main_spine]
+    if max(centers) - min(centers) > ALIGNMENT_TOLERANCE:
+        column_errors.append("main process spine center_x is inconsistent")
+
+    analysis_cards = [boxes[box_id] for box_id in layout.analysis_order]
+    analysis_lefts = [box.x for box in analysis_cards]
+    analysis_widths = [box.w for box in analysis_cards]
+    analysis_gaps = [
+        analysis_cards[idx + 1].y - (analysis_cards[idx].y + analysis_cards[idx].h)
+        for idx in range(len(analysis_cards) - 1)
+    ]
+    if max(analysis_lefts) - min(analysis_lefts) > ALIGNMENT_TOLERANCE:
+        column_errors.append("analysis panel cards are not left-aligned")
+    if max(analysis_widths) - min(analysis_widths) > SIZE_VARIANCE_TOLERANCE:
+        row_errors.append("analysis panel cards have inconsistent widths")
+    gap_values.extend(analysis_gaps)
+    size_values.extend(analysis_widths)
+
+    gap_variance = _variance(gap_values)
+    size_variance = _variance(size_values)
+    if gap_variance > GAP_VARIANCE_TOLERANCE**2:
+        row_errors.append(f"group gap variance too high: {gap_variance:.2f}")
+    passed = not row_errors and not column_errors
+    return {
+        "passed": passed,
+        "row_alignment_errors": row_errors,
+        "column_alignment_errors": column_errors,
+        "gap_variance": round(gap_variance, 2),
+        "size_variance": round(size_variance, 2),
+    }
+
+
+def check_group_size_normalization(layout: LayoutResult) -> dict[str, Any]:
+    boxes = layout.boxes
+    violations: list[str] = []
+    groups = [
+        {"id": "top_sources", "members": ["strategy_one", "strategy_two"], "equal_width": True, "equal_height": True},
+        {"id": "analysis_cards", "members": layout.analysis_order, "equal_width": True, "equal_height": True},
+        {"id": "side_exclusion_cards", "members": ["duplicate_label", "excluded_box"], "equal_x": True},
+    ]
+    details: list[dict[str, Any]] = []
+    for group in groups:
+        members = [boxes[member] for member in group["members"]]
+        widths = [box.w for box in members]
+        heights = [box.h for box in members]
+        xs = [box.x for box in members]
+        group_violations: list[str] = []
+        if group.get("equal_width") and max(widths) - min(widths) > SIZE_VARIANCE_TOLERANCE:
+            group_violations.append("widths differ")
+        if group.get("equal_height") and max(heights) - min(heights) > SIZE_VARIANCE_TOLERANCE:
+            group_violations.append("heights differ")
+        if group.get("equal_x") and max(xs) - min(xs) > ALIGNMENT_TOLERANCE:
+            group_violations.append("x positions differ")
+        violations.extend(f"{group['id']}: {violation}" for violation in group_violations)
+        details.append(
+            {
+                "id": group["id"],
+                "members": group["members"],
+                "width_range": round(max(widths) - min(widths), 2),
+                "height_range": round(max(heights) - min(heights), 2),
+                "x_range": round(max(xs) - min(xs), 2),
+                "passed": not group_violations,
+            }
+        )
+    return {"passed": not violations, "violations": violations, "groups": details}
+
+
+def check_edge_routing_quality(layout: LayoutResult) -> dict[str, Any]:
+    paths = _edge_paths(layout)
+    boxes = layout.boxes
+    node_crossing_edges: list[str] = []
+    bad_direction_edges: list[str] = []
+    all_segments: list[tuple[str, tuple[float, float], tuple[float, float]]] = []
+
+    edge_endpoints = {
+        "strategy_one_to_total": {"strategy_one", "total_box"},
+        "strategy_two_to_total": {"strategy_two", "total_box"},
+        "total_to_manual": {"total_box", "manual_box"},
+        "total_to_duplicate": {"total_box", "duplicate_label"},
+        "manual_to_excluded": {"manual_box", "excluded_box"},
+        "manual_to_analysis": {"manual_box", "analysis_box"},
+        "analysis_to_citation": {"analysis_box", "citation_box"},
+    }
+    for edge_id, points in paths.items():
+        for a, b in _segments(points):
+            all_segments.append((edge_id, a, b))
+            for box_id, box in boxes.items():
+                if box_id in edge_endpoints[edge_id]:
+                    continue
+                if _segment_intersects_rect(a, b, _box_rect(box, pad=2)):
+                    node_crossing_edges.append(f"{edge_id} crosses {box_id}")
+
+    for edge_id in ["total_to_manual", "manual_to_analysis"]:
+        points = paths[edge_id]
+        if points[-1][1] <= points[0][1]:
+            bad_direction_edges.append(f"{edge_id} is not monotonic downward")
+    for edge_id in ["total_to_duplicate", "manual_to_excluded", "analysis_to_citation"]:
+        points = paths[edge_id]
+        if points[-1][0] <= points[0][0]:
+            bad_direction_edges.append(f"{edge_id} is not monotonic rightward")
+
+    crossing_count = 0
+    crossing_pairs: list[str] = []
+    for idx, (edge_a, a1, a2) in enumerate(all_segments):
+        for edge_b, b1, b2 in all_segments[idx + 1 :]:
+            if edge_a == edge_b:
+                continue
+            if _segments_cross(a1, a2, b1, b2):
+                crossing_count += 1
+                crossing_pairs.append(f"{edge_a} x {edge_b}")
+
+    passed = not node_crossing_edges and not bad_direction_edges and crossing_count <= MAX_EDGE_CROSSINGS
+    return {
+        "passed": passed,
+        "node_crossing_edges": sorted(set(node_crossing_edges)),
+        "edge_crossing_count": crossing_count,
+        "edge_crossing_pairs": crossing_pairs,
+        "bad_feedback_edges": [],
+        "bad_direction_edges": bad_direction_edges,
+        "max_edge_crossings": MAX_EDGE_CROSSINGS,
+    }
+
+
+def check_anchor_consistency(layout: LayoutResult) -> dict[str, Any]:
+    boxes = layout.boxes
+    paths = _edge_paths(layout)
+    violations: list[str] = []
+
+    expected = {
+        "strategy_one_to_total": ((boxes["strategy_one"].x + boxes["strategy_one"].w / 2, boxes["strategy_one"].y + boxes["strategy_one"].h), (boxes["total_box"].x + boxes["total_box"].w / 2, boxes["total_box"].y)),
+        "strategy_two_to_total": ((boxes["strategy_two"].x + boxes["strategy_two"].w / 2, boxes["strategy_two"].y + boxes["strategy_two"].h), (boxes["total_box"].x + boxes["total_box"].w / 2, boxes["total_box"].y)),
+        "total_to_manual": ((boxes["total_box"].x + boxes["total_box"].w / 2, boxes["total_box"].y + boxes["total_box"].h), (boxes["manual_box"].x + boxes["manual_box"].w / 2, boxes["manual_box"].y)),
+        "manual_to_analysis": ((boxes["manual_box"].x + boxes["manual_box"].w / 2, boxes["manual_box"].y + boxes["manual_box"].h), (boxes["analysis_box"].x + boxes["analysis_box"].w / 2, boxes["analysis_box"].y)),
+        "analysis_to_citation": ((boxes["analysis_box"].x + boxes["analysis_box"].w, boxes["analysis_box"].y + boxes["analysis_box"].h / 2), (boxes["citation_box"].x, boxes["analysis_box"].y + boxes["analysis_box"].h / 2)),
+    }
+    for edge_id, (start, end) in expected.items():
+        points = paths[edge_id]
+        if not (_nearly_equal(points[0][0], start[0], ALIGNMENT_TOLERANCE) and _nearly_equal(points[0][1], start[1], ALIGNMENT_TOLERANCE)):
+            violations.append(f"{edge_id} source anchor is inconsistent")
+        if not (_nearly_equal(points[-1][0], end[0], ALIGNMENT_TOLERANCE) and _nearly_equal(points[-1][1], end[1], ALIGNMENT_TOLERANCE)):
+            violations.append(f"{edge_id} target anchor is inconsistent")
+    return {"passed": not violations, "violations": violations}
+
+
+def check_visual_hierarchy(layout: LayoutResult) -> dict[str, Any]:
+    warnings: list[str] = []
+    title_center_delta = 0.0
+    if layout.left_panel[0] >= layout.right_panel[0]:
+        warnings.append("analysis panel is not right of collection panel")
+    if layout.right_panel[2] < 360:
+        warnings.append("analysis panel is too narrow")
+    if BOX_STYLE_BY_ID["manual_box"] != BOX_STYLE_BY_ID["analysis_box"]:
+        warnings.append("included/process nodes do not share color semantics")
+    if BOX_STYLE_BY_ID["duplicate_label"] != BOX_STYLE_BY_ID["citation_box"]:
+        warnings.append("support/annotation nodes do not share color semantics")
+    analysis_cards = [layout.boxes[box_id] for box_id in layout.analysis_order]
+    if max(box.w for box in analysis_cards) - min(box.w for box in analysis_cards) > SIZE_VARIANCE_TOLERANCE:
+        warnings.append("analysis panel cards are not visually normalized")
+    return {
+        "passed": not warnings,
+        "warnings": warnings,
+        "title_center_delta": title_center_delta,
+        "color_semantics": {
+            "strategy": BOX_STYLE_BY_ID["strategy_one"],
+            "included": BOX_STYLE_BY_ID["manual_box"],
+            "annotation": BOX_STYLE_BY_ID["duplicate_label"],
+            "excluded": BOX_STYLE_BY_ID["excluded_box"],
+        },
+    }
+
+
+def check_text_style_consistency(layout: LayoutResult) -> dict[str, Any]:
+    long_line_nodes: list[str] = []
+    orphan_line_nodes: list[str] = []
+    font_mismatch_nodes: list[str] = []
+    line_counts: dict[str, int] = {}
+
+    expected_fonts = {
+        "strategy_one": layout.boxes["strategy_one"].font_size,
+        "strategy_two": layout.boxes["strategy_one"].font_size,
+        "analysis_step_1": layout.boxes["analysis_step_1"].font_size,
+        "analysis_step_2": layout.boxes["analysis_step_1"].font_size,
+        "analysis_step_3": layout.boxes["analysis_step_1"].font_size,
+        "analysis_step_4": layout.boxes["analysis_step_1"].font_size,
+    }
+    for box_id, box in layout.boxes.items():
+        lines = wrap_text(box.text, box.w - 36, box.font_size)
+        line_counts[box_id] = len(lines)
+        if any(sum(_char_units(ch) for ch in line) > MAX_TEXT_LINE_UNITS for line in lines):
+            long_line_nodes.append(box_id)
+        last_words = lines[-1].strip().split() if lines else []
+        if last_words and len(lines) > 2:
+            last_units = sum(_char_units(ch) for ch in lines[-1].strip())
+            if last_units <= 2.0 or lines[-1].strip().lower() in {"and", "or", "of", "ai"}:
+                orphan_line_nodes.append(box_id)
+        expected_font = expected_fonts.get(box_id)
+        if expected_font is not None and abs(box.font_size - expected_font) > 1:
+            font_mismatch_nodes.append(box_id)
+
+    passed = not long_line_nodes and not orphan_line_nodes and not font_mismatch_nodes
+    return {
+        "passed": passed,
+        "long_line_nodes": long_line_nodes,
+        "orphan_line_nodes": orphan_line_nodes,
+        "font_mismatch_nodes": font_mismatch_nodes,
+        "line_counts": line_counts,
+        "max_text_line_units": MAX_TEXT_LINE_UNITS,
+    }
+
+
+def check_semantic_layout_contract(layout: LayoutResult) -> dict[str, Any]:
+    boxes = layout.boxes
+    violations: list[str] = []
+
+    if not (STAGE_PILLS["identification"][1] < STAGE_PILLS["screening"][1] < STAGE_PILLS["included"][1]):
+        violations.append("stage labels are not ordered identification -> screening -> included")
+    if layout.right_panel[0] <= layout.left_panel[0] + layout.left_panel[2]:
+        violations.append("analysis panel is not right of data collection panel")
+    if boxes["duplicate_label"].x <= boxes["total_box"].x + boxes["total_box"].w:
+        violations.append("duplicate exclusion label is not right of total publications node")
+    if boxes["excluded_box"].x <= boxes["manual_box"].x + boxes["manual_box"].w:
+        violations.append("excluded-publications detail is not right of manual-screening node")
+    if boxes["analysis_box"].y <= boxes["manual_box"].y:
+        violations.append("data-analysis node is not below manual-screening node")
+    if boxes["analysis_box"].y + boxes["analysis_box"].h < boxes["excluded_box"].y:
+        violations.append("final included node is not visually below screening exclusions")
+    if boxes["citation_box"].x <= boxes["analysis_box"].x + boxes["analysis_box"].w:
+        violations.append("citation collection support box is not right of final included node")
+    return {"passed": not violations, "violations": violations}
+
+
+def check_inter_panel_gap(layout: LayoutResult) -> dict[str, Any]:
+    gap = _inter_panel_gap(layout)
+    min_allowed = max(MIN_INTER_PANEL_GAP, layout.width * MIN_GAP_SHARE)
+    max_allowed = min(MAX_INTER_PANEL_GAP, layout.width * MAX_INTER_PANEL_GAP_RATIO)
+    issues: list[str] = []
+    repair = None
+
+    if gap < min_allowed:
+        issues.append(f"inter-panel gap is too tight: {gap:.1f}px < {min_allowed:.1f}px")
+        repair = "move_analysis_panel_right"
+    if gap > max_allowed:
+        issues.append(f"inter-panel gap is too loose: {gap:.1f}px > {max_allowed:.1f}px")
+        repair = "move_analysis_panel_left"
+
+    return {
+        "passed": not issues,
+        "issues": issues,
+        "gap_px": round(gap, 2),
+        "min_allowed_px": round(min_allowed, 2),
+        "max_allowed_px": round(max_allowed, 2),
+        "repair": repair,
+    }
+
+
+def check_connector_arrow_length(layout: LayoutResult) -> dict[str, Any]:
+    tail_x, tip_x = _big_arrow_bounds(layout)
+    length = tip_x - tail_x
+    max_allowed = min(MAX_BIG_ARROW_LENGTH, max(0.0, _inter_panel_gap(layout) * 0.75))
+    issues: list[str] = []
+    repair = None
+
+    if length < MIN_BIG_ARROW_LENGTH:
+        issues.append(f"connector arrow is too short: {length:.1f}px < {MIN_BIG_ARROW_LENGTH:.1f}px")
+        repair = "increase_panel_gap"
+    if length > max_allowed:
+        issues.append(f"connector arrow is too long: {length:.1f}px > {max_allowed:.1f}px")
+        repair = "move_analysis_panel_left"
+
+    return {
+        "passed": not issues,
+        "issues": issues,
+        "length_px": round(length, 2),
+        "min_px": MIN_BIG_ARROW_LENGTH,
+        "preferred_px": PREFERRED_BIG_ARROW_LENGTH,
+        "max_allowed_px": round(max_allowed, 2),
+        "tail_x": round(tail_x, 2),
+        "tip_x": round(tip_x, 2),
+        "repair": repair,
+    }
+
+
+def check_canvas_utilization(layout: LayoutResult) -> dict[str, Any]:
+    content_min_x = min(layout.left_panel[0], layout.right_panel[0])
+    content_max_x = max(_panel_right(layout.left_panel), _panel_right(layout.right_panel))
+    content_width = content_max_x - content_min_x
+    content_width_ratio = content_width / layout.width
+    issues: list[str] = []
+
+    if content_width_ratio < MIN_CONTENT_WIDTH_RATIO:
+        issues.append(
+            f"content width ratio is too sparse: {content_width_ratio:.3f} < {MIN_CONTENT_WIDTH_RATIO:.2f}"
+        )
+    if content_width_ratio > MAX_CONTENT_WIDTH_RATIO:
+        issues.append(
+            f"content width ratio is too wide: {content_width_ratio:.3f} > {MAX_CONTENT_WIDTH_RATIO:.2f}"
+        )
+
+    return {
+        "passed": not issues,
+        "issues": issues,
+        "content_width_px": round(content_width, 2),
+        "content_width_ratio": round(content_width_ratio, 4),
+        "min_ratio": MIN_CONTENT_WIDTH_RATIO,
+        "max_ratio": MAX_CONTENT_WIDTH_RATIO,
+    }
+
+
+def check_panel_layout_contract(layout: LayoutResult) -> dict[str, Any]:
+    violations: list[str] = []
+    gap = _inter_panel_gap(layout)
+    total_panel_row_width = layout.left_panel[2] + gap + layout.right_panel[2]
+    left_share = layout.left_panel[2] / total_panel_row_width
+    right_share = layout.right_panel[2] / total_panel_row_width
+    gap_share = gap / total_panel_row_width
+    expected_gap = _clamp(layout.width * 0.05, 64.0, MAX_INTER_PANEL_GAP)
+
+    if layout.right_panel[0] <= _panel_right(layout.left_panel):
+        violations.append("analysis panel must be placed to the right of the collection panel")
+    if not (MIN_INTER_PANEL_GAP <= gap <= MAX_INTER_PANEL_GAP):
+        violations.append(f"panel gap must stay between {MIN_INTER_PANEL_GAP:.0f}px and {MAX_INTER_PANEL_GAP:.0f}px")
+    if not (MIN_LEFT_PANEL_SHARE <= left_share <= MAX_LEFT_PANEL_SHARE):
+        violations.append(
+            f"left panel share must be {MIN_LEFT_PANEL_SHARE:.2f}-{MAX_LEFT_PANEL_SHARE:.2f}, got {left_share:.3f}"
+        )
+    if not (MIN_RIGHT_PANEL_SHARE <= right_share <= MAX_RIGHT_PANEL_SHARE):
+        violations.append(
+            f"right panel share must be {MIN_RIGHT_PANEL_SHARE:.2f}-{MAX_RIGHT_PANEL_SHARE:.2f}, got {right_share:.3f}"
+        )
+    if not (MIN_GAP_SHARE <= gap_share <= MAX_GAP_SHARE):
+        violations.append(f"gap share must be {MIN_GAP_SHARE:.2f}-{MAX_GAP_SHARE:.2f}, got {gap_share:.3f}")
+
+    return {
+        "passed": not violations,
+        "violations": violations,
+        "left_panel_right": round(_panel_right(layout.left_panel), 2),
+        "right_panel_left": round(layout.right_panel[0], 2),
+        "gap_px": round(gap, 2),
+        "expected_gap_px": round(expected_gap, 2),
+        "left_panel_share": round(left_share, 4),
+        "right_panel_share": round(right_share, 4),
+        "gap_share": round(gap_share, 4),
+    }
+
+
 def build_ir(spec: dict[str, Any]) -> DiagramIR:
     nodes = [
         NodeSpec("strategy_one", spec["strategy_boxes"][0]["text"], "strategy"),
@@ -755,17 +1279,21 @@ def plan_layout(ir: DiagramIR, *, relayout: bool = False) -> LayoutResult:
     height = int(layout_cfg.get("canvas_height", 1380))
     box_rx = float(layout_cfg.get("box_rx", 10))
 
-    left_panel = (70.0, 130.0, 930.0 if not relayout else 945.0, 1110.0)
-    right_panel = (1290.0 if not relayout else 1298.0, 350.0, 410.0 if not relayout else 412.0, 560.0)
+    left_panel_w = 930.0 if not relayout else 945.0
+    left_panel = (70.0, 130.0, left_panel_w, 1110.0)
+    panel_gap = _clamp(width * 0.05, 64.0, MAX_INTER_PANEL_GAP)
+    right_panel_w = 410.0 if not relayout else 412.0
+    right_panel_x = left_panel[0] + left_panel[2] + panel_gap
+    right_panel = (right_panel_x, 350.0, right_panel_w, 560.0)
 
-    strategy1 = fit_box("strategy_one", _node_lookup(ir)["strategy_one"].text, 155, 180, 260, 205, body_font + 1)
+    strategy1 = fit_box("strategy_one", _node_lookup(ir)["strategy_one"].text, 155, 175, 350, 220, body_font + 1)
     strategy2 = fit_box(
         "strategy_two",
         _node_lookup(ir)["strategy_two"].text,
-        455 if not relayout else 465,
+        525 if not relayout else 535,
         175,
-        350 if not relayout else 360,
-        220 if not relayout else 228,
+        350,
+        220,
         body_font,
         min_font_size=max(14, body_font - 2),
     )
@@ -806,11 +1334,12 @@ def plan_layout(ir: DiagramIR, *, relayout: bool = False) -> LayoutResult:
 
     analysis_boxes: dict[str, Box] = {}
     box_y = 390
+    analysis_card_x = right_panel[0] + 55.0
     for idx, step in enumerate(ir.analysis_steps, start=1):
         analysis_boxes[f"analysis_step_{idx}"] = fit_box(
             f"analysis_step_{idx}",
             step,
-            1345 if not relayout else 1350,
+            analysis_card_x,
             box_y,
             300 if not relayout else 308,
             96 if not relayout else 102,
@@ -860,6 +1389,17 @@ def assess_layout(layout: LayoutResult, ir: DiagramIR) -> LayoutMetrics:
     issues, overlaps = validate_boxes(boxes)
     overlap_safety = check_overlap_safety(layout)
     panel_padding_balance = check_panel_padding_balance(layout)
+    alignment_consistency = check_alignment_consistency(layout)
+    group_size_normalization = check_group_size_normalization(layout)
+    edge_routing_quality = check_edge_routing_quality(layout)
+    anchor_consistency = check_anchor_consistency(layout)
+    visual_hierarchy = check_visual_hierarchy(layout)
+    text_style_consistency = check_text_style_consistency(layout)
+    semantic_layout_contract = check_semantic_layout_contract(layout)
+    inter_panel_gap = check_inter_panel_gap(layout)
+    connector_arrow_length = check_connector_arrow_length(layout)
+    canvas_utilization = check_canvas_utilization(layout)
+    panel_layout_contract = check_panel_layout_contract(layout)
     warnings: list[str] = []
     alignment_deltas = {
         "spine_center_delta": abs(
@@ -880,6 +1420,20 @@ def assess_layout(layout: LayoutResult, ir: DiagramIR) -> LayoutMetrics:
     score -= len(text_overflows) * 20
     score -= len(overlap_safety["issues"]) * 25
     score -= len(panel_padding_balance["issues"]) * 20
+    score -= len(alignment_consistency["row_alignment_errors"]) * 12
+    score -= len(alignment_consistency["column_alignment_errors"]) * 12
+    score -= len(group_size_normalization["violations"]) * 12
+    score -= len(edge_routing_quality["node_crossing_edges"]) * 18
+    score -= len(edge_routing_quality["bad_direction_edges"]) * 12
+    score -= len(anchor_consistency["violations"]) * 12
+    score -= len(semantic_layout_contract["violations"]) * 20
+    score -= len(inter_panel_gap["issues"]) * 18
+    score -= len(connector_arrow_length["issues"]) * 18
+    score -= len(canvas_utilization["issues"]) * 12
+    score -= len(panel_layout_contract["violations"]) * 18
+    score -= len(text_style_consistency["long_line_nodes"]) * 8
+    score -= len(text_style_consistency["orphan_line_nodes"]) * 8
+    score -= len(text_style_consistency["font_mismatch_nodes"]) * 8
     score -= min(15, int(alignment_deltas["spine_center_delta"] * 2))
     score -= min(10, int(alignment_deltas["analysis_chain_delta"]))
     score = max(0, score)
@@ -897,6 +1451,17 @@ def assess_layout(layout: LayoutResult, ir: DiagramIR) -> LayoutMetrics:
         and not text_overflows
         and overlap_safety["passed"]
         and panel_padding_balance["passed"]
+        and alignment_consistency["passed"]
+        and group_size_normalization["passed"]
+        and edge_routing_quality["passed"]
+        and anchor_consistency["passed"]
+        and visual_hierarchy["passed"]
+        and text_style_consistency["passed"]
+        and semantic_layout_contract["passed"]
+        and inter_panel_gap["passed"]
+        and connector_arrow_length["passed"]
+        and canvas_utilization["passed"]
+        and panel_layout_contract["passed"]
     )
     return LayoutMetrics(
         score=max(score, 0),
@@ -905,6 +1470,17 @@ def assess_layout(layout: LayoutResult, ir: DiagramIR) -> LayoutMetrics:
         overlaps=overlaps,
         overlap_safety=overlap_safety,
         panel_padding_balance=panel_padding_balance,
+        alignment_consistency=alignment_consistency,
+        group_size_normalization=group_size_normalization,
+        edge_routing_quality=edge_routing_quality,
+        anchor_consistency=anchor_consistency,
+        visual_hierarchy=visual_hierarchy,
+        text_style_consistency=text_style_consistency,
+        semantic_layout_contract=semantic_layout_contract,
+        inter_panel_gap=inter_panel_gap,
+        connector_arrow_length=connector_arrow_length,
+        canvas_utilization=canvas_utilization,
+        panel_layout_contract=panel_layout_contract,
         text_overflows=text_overflows,
         alignment_deltas=alignment_deltas,
         readability_passed=readability_passed,
@@ -1275,6 +1851,7 @@ def render_svg(ir: DiagramIR, layout: LayoutResult) -> str:
     strategy2 = boxes["strategy_two"]
     duplicate = boxes["duplicate_label"]
     excluded = boxes["excluded_box"]
+    big_arrow_tail_x, big_arrow_tip_x = _big_arrow_bounds(layout)
 
     shared_merge_y = total.y - 28
     duplicate_branch_y = duplicate.y + duplicate.h / 2
@@ -1335,9 +1912,9 @@ def render_svg(ir: DiagramIR, layout: LayoutResult) -> str:
                 ],
             ),
             (
-                draw_large_arrow(layout.left_panel[0] + layout.left_panel[2] + 6, layout.large_arrow_y, layout.right_panel[0] - 18)
+                draw_large_arrow(big_arrow_tail_x, layout.large_arrow_y, big_arrow_tip_x)
                 if connector_styles.get("analysis_panel_arrow", "arrow") != "line"
-                else draw_line(layout.left_panel[0] + layout.left_panel[2], layout.large_arrow_y, layout.right_panel[0] - 24, layout.large_arrow_y, stroke_width=3.2)
+                else draw_line(big_arrow_tail_x, layout.large_arrow_y, big_arrow_tip_x, layout.large_arrow_y, stroke_width=3.2)
             ),
             draw_multiline_text(
                 layout.right_panel[0] + layout.right_panel[2] / 2,
@@ -1389,6 +1966,21 @@ def run_pipeline(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
                 final_metrics.issues
                 + final_metrics.overlap_safety.get("issues", [])
                 + final_metrics.panel_padding_balance.get("issues", [])
+                + final_metrics.alignment_consistency.get("row_alignment_errors", [])
+                + final_metrics.alignment_consistency.get("column_alignment_errors", [])
+                + final_metrics.group_size_normalization.get("violations", [])
+                + final_metrics.edge_routing_quality.get("node_crossing_edges", [])
+                + final_metrics.edge_routing_quality.get("bad_direction_edges", [])
+                + final_metrics.anchor_consistency.get("violations", [])
+                + final_metrics.visual_hierarchy.get("warnings", [])
+                + final_metrics.text_style_consistency.get("long_line_nodes", [])
+                + final_metrics.text_style_consistency.get("orphan_line_nodes", [])
+                + final_metrics.text_style_consistency.get("font_mismatch_nodes", [])
+                + final_metrics.semantic_layout_contract.get("violations", [])
+                + final_metrics.inter_panel_gap.get("issues", [])
+                + final_metrics.connector_arrow_length.get("issues", [])
+                + final_metrics.canvas_utilization.get("issues", [])
+                + final_metrics.panel_layout_contract.get("violations", [])
                 + final_metrics.warnings
             )
         )
@@ -1410,6 +2002,17 @@ def run_pipeline(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             "layout_quality_assessment",
             "overlap_safety_check",
             "left_panel_padding_balance_check",
+            "alignment_consistency_check",
+            "group_size_normalization_check",
+            "edge_routing_quality_check",
+            "anchor_consistency_check",
+            "visual_hierarchy_check",
+            "text_style_consistency_check",
+            "semantic_layout_contract_check",
+            "inter_panel_gap_check",
+            "connector_arrow_length_check",
+            "canvas_utilization_check",
+            "panel_layout_contract_check",
             "svg_bbox_check",
             "graphviz_json_coordinate_check",
             "png_edge_pixel_check",
@@ -1422,6 +2025,11 @@ def run_pipeline(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         "initial_layout": asdict(first_metrics),
         "initial_post_render": asdict(first_post),
         "final_layout": asdict(final_metrics),
+        "final_style": {
+            "visual_hierarchy": final_metrics.visual_hierarchy,
+            "text_style_consistency": final_metrics.text_style_consistency,
+            "color_semantics": final_metrics.visual_hierarchy.get("color_semantics", {}),
+        },
         "final_post_render": asdict(final_post),
         "relayout_applied": final_layout.relayout_applied,
         "relayout_reason": final_layout.relayout_reason,
