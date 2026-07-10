@@ -138,7 +138,7 @@ python3 tools/render_bibliometric_network.py --dump-sample
 ```text
 --max-nodes-per-type  每类节点最多保留多少个，默认 24
 --min-node-citations  过滤低引用节点，默认 0
---max-labels          最多显示多少个标签，默认 48
+--max-labels          兼容旧调用；保留节点都会显示标签，避免无名节点
 --seed                固定布局随机种子，默认 20260710
 --width               SVG 宽度，默认 1600
 --height              SVG 高度，默认 1120
@@ -191,7 +191,7 @@ label_bounds_issues   文字是否越出画布
 label_node_overlaps   文字是否压到其他节点
 ```
 
-如果某个标签无法在不重叠的位置显示，渲染器会自动跳过该标签，但节点仍保留在图中，详细数据仍可通过 SVG tooltip 和 report 查看。CLI 在 `validation.passed = false` 时返回非零退出码。
+所有保留节点都会将多行标签置于节点内，并按标签尺寸扩展节点。缺失、空白或 `Unknown`、`N/A` 等占位元数据不会生成节点。CLI 在 `validation.passed = false` 时返回非零退出码。
 
 快速检查：
 

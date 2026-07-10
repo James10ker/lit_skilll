@@ -153,7 +153,7 @@ class Edge:
 @dataclass
 class LabelBox:
     node_id: str
-    text: str
+    lines: tuple[str, ...]
     x: float
     y: float
     w: float
@@ -185,7 +185,7 @@ def split_multi(value: Any) -> list[str]:
     seen = set()
     for item in raw:
         label = str(item).strip()
-        if label and label.lower() not in seen:
+        if is_named_label(label) and label.lower() not in seen:
             seen.add(label.lower())
             items.append(label)
     return items
@@ -196,6 +196,11 @@ def clean_scalar(value: Any, default: str = "") -> str:
         return default
     text = str(value).strip()
     return text if text else default
+
+
+def is_named_label(value: str) -> bool:
+    """Reject empty and placeholder metadata so every rendered node is meaningful."""
+    return value.strip().lower() not in {"", "-", "--", "n/a", "na", "none", "null", "unknown", "unknown source", "unknown year"}
 
 
 def parse_citations(value: Any) -> float:
@@ -210,8 +215,8 @@ def parse_citations(value: Any) -> float:
 def normalize_record(raw: dict[str, Any], index: int) -> PaperRecord:
     title = clean_scalar(raw.get("title") or raw.get("paper_title"), f"record-{index + 1}")
     authors = split_multi(raw.get("authors") or raw.get("author"))
-    journal = clean_scalar(raw.get("journal") or raw.get("source") or raw.get("publication_source"), "Unknown source")
-    year = clean_scalar(raw.get("year") or raw.get("publication_year"), "Unknown year")
+    journal = clean_scalar(raw.get("journal") or raw.get("source") or raw.get("publication_source"))
+    year = clean_scalar(raw.get("year") or raw.get("publication_year"))
     topics = split_multi(raw.get("topics") or raw.get("keywords") or raw.get("theme"))
     affiliations = split_multi(raw.get("affiliations") or raw.get("institutions") or raw.get("author_units"))
     citations = parse_citations(raw.get("citations") or raw.get("citation_count") or raw.get("cited_by"))
@@ -271,8 +276,8 @@ def build_graph(records: list[PaperRecord]) -> tuple[dict[str, Node], dict[tuple
     for record in records:
         groups = {
             "author": record.authors,
-            "journal": [record.journal] if record.journal else [],
-            "year": [record.year] if record.year else [],
+            "journal": [record.journal] if is_named_label(record.journal) else [],
+            "year": [record.year] if is_named_label(record.year) else [],
             "topic": record.topics,
             "affiliation": record.affiliations,
         }
@@ -285,7 +290,11 @@ def build_graph(records: list[PaperRecord]) -> tuple[dict[str, Node], dict[tuple
 
         record_nodes: dict[str, list[str]] = {}
         for node_type, labels in groups.items():
-            record_nodes[node_type] = [add_node(nodes, node_type, label, record) for label in labels]
+            record_nodes[node_type] = [
+                add_node(nodes, node_type, label, record)
+                for label in labels
+                if is_named_label(label)
+            ]
 
         for left_type, left_ids in record_nodes.items():
             for right_type, right_ids in record_nodes.items():
@@ -436,6 +445,51 @@ def assign_node_sizes(nodes: dict[str, Node]) -> None:
             node.r *= 0.82
 
 
+def wrap_label(label: str, *, max_chars: int = 14, max_lines: int = 3) -> tuple[str, ...]:
+    """Create a compact, deterministic label that can fit inside a circular node."""
+    text = display_label(label)
+    words = text.split()
+    if len(words) <= 1:
+        return tuple(text[index : index + max_chars] for index in range(0, len(text), max_chars))[:max_lines]
+
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if current and len(candidate) > max_chars:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    if len(lines) <= max_lines:
+        return tuple(lines)
+    shortened = list(lines[:max_lines])
+    shortened[-1] = shortened[-1][: max(1, max_chars - 3)].rstrip() + "..."
+    return tuple(shortened)
+
+
+def label_font_size(node: Node) -> float:
+    # A stable size keeps the measured label footprint identical to the final SVG.
+    del node
+    return 10.0
+
+
+def label_dimensions(lines: tuple[str, ...], font_size: float) -> tuple[float, float]:
+    return max(estimate_label_width(line, font_size) for line in lines), len(lines) * font_size * 1.18
+
+
+def expand_nodes_for_labels(nodes: dict[str, Node]) -> None:
+    """Keep every label inside its own node, leaving a small readable margin."""
+    for node in nodes.values():
+        lines = wrap_label(node.label)
+        font_size = label_font_size(node)
+        text_w, text_h = label_dimensions(lines, font_size)
+        required_radius = math.hypot(text_w / 2.0, text_h / 2.0) + 7.0
+        node.r = max(node.r, required_radius)
+
+
 def clamp_node_to_canvas(node: Node, width: int, height: int) -> None:
     margin_top = 86.0
     margin_bottom = 72.0
@@ -478,17 +532,9 @@ def edge_width(edge: Edge, max_citations: float) -> float:
     return scale(math.log1p(edge.citations), 0.0, math.log1p(max_citations), 0.35, 7.5)
 
 
-def label_font_size(node: Node) -> float:
-    return max(12.0, min(32.0, node.r * 0.62 + 9.0))
-
-
-def should_label(node: Node, rank: int, total: int) -> bool:
-    return total <= 55 or rank < 42 or node.r >= 18
-
-
 def display_label(label: str) -> str:
-    if len(label) > 34:
-        return label[:31].rstrip() + "..."
+    if len(label) > 42:
+        return label[:39].rstrip() + "..."
     return label
 
 
@@ -523,84 +569,33 @@ def rects_overlap(
 
 
 def label_rect(label: LabelBox) -> tuple[float, float, float, float]:
-    if label.anchor == "end":
-        x0 = label.x - label.w
-        x1 = label.x
-    elif label.anchor == "middle":
-        x0 = label.x - label.w / 2
-        x1 = label.x + label.w / 2
-    else:
-        x0 = label.x
-        x1 = label.x + label.w
-    y0 = label.y - label.h
-    y1 = label.y + label.h * 0.22
-    return x0, y0, x1, y1
-
-
-def label_candidate(node: Node, text: str, font_size: float, width: int, height: int, index: int) -> LabelBox:
-    text_w = estimate_label_width(text, font_size)
-    text_h = font_size * 1.12
-    ring = index // 8
-    gap = max(6.0, node.r * 0.20) + ring * max(10.0, font_size * 0.72)
-    candidates = [
-        ("right", node.x + node.r + gap, node.y + text_h / 2, "start"),
-        ("left", node.x - node.r - gap, node.y + text_h / 2, "end"),
-        ("top", node.x, node.y - node.r - gap, "middle"),
-        ("bottom", node.x, node.y + node.r + text_h + gap, "middle"),
-        ("top_right", node.x + node.r * 0.70, node.y - node.r * 0.70, "start"),
-        ("top_left", node.x - node.r * 0.70, node.y - node.r * 0.70, "end"),
-        ("bottom_right", node.x + node.r * 0.70, node.y + node.r * 0.70 + text_h, "start"),
-        ("bottom_left", node.x - node.r * 0.70, node.y + node.r * 0.70 + text_h, "end"),
-    ]
-    if node.x > width * 0.72:
-        candidates = [candidates[1], candidates[5], candidates[7], candidates[2], candidates[3], candidates[0]]
-    elif node.x < width * 0.22:
-        candidates = [candidates[0], candidates[4], candidates[6], candidates[2], candidates[3], candidates[1]]
-    _, x, y, anchor = candidates[index % len(candidates)]
-    return LabelBox(node.id, text, x, y, text_w, text_h, anchor, font_size)
+    return (
+        label.x - label.w / 2,
+        label.y - label.h / 2,
+        label.x + label.w / 2,
+        label.y + label.h / 2,
+    )
 
 
 def circle_rect(node: Node, pad: float = 0.0) -> tuple[float, float, float, float]:
     return node.x - node.r - pad, node.y - node.r - pad, node.x + node.r + pad, node.y + node.r + pad
 
 
-def label_penalty(
-    label: LabelBox,
-    placed: list[LabelBox],
-    nodes: dict[str, Node],
-    width: int,
-    height: int,
-) -> float:
-    rect = label_rect(label)
-    penalty = 0.0
-    if rect[0] < 10 or rect[1] < 76 or rect[2] > width - 10 or rect[3] > height - 42:
-        penalty += 5000.0
-    for other in placed:
-        if rects_overlap(rect, label_rect(other), pad=4.0):
-            penalty += 1200.0
-    for node in nodes.values():
-        if node.id == label.node_id:
-            continue
-        if rects_overlap(rect, circle_rect(node, pad=2.0)):
-            penalty += 650.0
-    return penalty
+def rect_overlaps_circle(rect: tuple[float, float, float, float], node: Node, pad: float = 0.0) -> bool:
+    """Return whether an axis-aligned text box intersects a circular node."""
+    closest_x = max(rect[0], min(node.x, rect[2]))
+    closest_y = max(rect[1], min(node.y, rect[3]))
+    return math.hypot(node.x - closest_x, node.y - closest_y) < node.r + pad
 
 
 def place_labels(nodes: dict[str, Node], *, width: int, height: int, max_labels: int) -> list[LabelBox]:
-    ranked_nodes = sorted(nodes.values(), key=lambda n: (n.citations, n.occurrences), reverse=True)
-    selected = [
-        node
-        for rank, node in enumerate(ranked_nodes[:max_labels])
-        if should_label(node, rank, len(nodes))
-    ]
+    del width, height, max_labels
     placed: list[LabelBox] = []
-    for node in selected:
-        text = display_label(node.label)
+    for node in sorted(nodes.values(), key=lambda n: (n.citations, n.occurrences), reverse=True):
+        lines = wrap_label(node.label)
         font_size = label_font_size(node)
-        candidates = [label_candidate(node, text, font_size, width, height, index) for index in range(32)]
-        best = min(candidates, key=lambda candidate: label_penalty(candidate, placed, nodes, width, height))
-        if label_penalty(best, placed, nodes, width, height) == 0:
-            placed.append(best)
+        text_w, text_h = label_dimensions(lines, font_size)
+        placed.append(LabelBox(node.id, lines, node.x, node.y, text_w, text_h, "middle", font_size))
     return placed
 
 
@@ -633,7 +628,7 @@ def check_overlaps(
         for node in node_list:
             if node.id == left.node_id:
                 continue
-            if rects_overlap(left_rect, circle_rect(node, pad=1.0)):
+            if rect_overlaps_circle(left_rect, node, pad=1.0):
                 label_node_overlaps.append(f"{nodes[left.node_id].label} label overlaps {node.label} node")
 
     passed = not (node_overlaps or label_overlaps or label_bounds_issues or label_node_overlaps)
@@ -712,12 +707,18 @@ def render_svg(
 
     parts.append('<g id="labels" font-family="Times New Roman, Georgia, serif" fill="#000000">')
     for label_box in sorted(labels, key=lambda item: nodes[item.node_id].r, reverse=True):
+        line_height = label_box.font_size * 1.18
+        first_baseline = label_box.y - (len(label_box.lines) - 1) * line_height / 2
         parts.append(
             f'<text x="{label_box.x:.2f}" y="{label_box.y:.2f}" text-anchor="{label_box.anchor}" '
             f'font-size="{label_box.font_size:.1f}" '
-            f'font-weight="700" paint-order="stroke" stroke="#ffffff" stroke-width="4" '
-            f'stroke-linejoin="round">{escape(label_box.text)}</text>'
+            f'font-weight="700" paint-order="stroke" stroke="#111111" stroke-width="1.4" '
+            f'stroke-linejoin="round" fill="#ffffff">'
         )
+        for index, line in enumerate(label_box.lines):
+            baseline = first_baseline + index * line_height
+            parts.append(f'<tspan x="{label_box.x:.2f}" y="{baseline:.2f}">{escape(line)}</tspan>')
+        parts.append("</text>")
     parts.append("</g>")
 
     legend_x = 42
@@ -798,6 +799,7 @@ def run_pipeline(
         raise ValueError("graph is empty after filtering; lower --min-node-citations or increase --max-nodes-per-type")
     layout_graph(nodes, edges, seed)
     assign_node_sizes(nodes)
+    expand_nodes_for_labels(nodes)
     normalize_to_canvas(nodes, width, height)
     resolve_node_overlaps(nodes, width, height)
     labels = place_labels(nodes, width=width, height=height, max_labels=max_labels)
@@ -826,7 +828,12 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--max-nodes-per-type", type=int, default=24)
     parser.add_argument("--min-node-citations", type=float, default=0.0)
-    parser.add_argument("--max-labels", type=int, default=48)
+    parser.add_argument(
+        "--max-labels",
+        type=int,
+        default=48,
+        help="Deprecated compatibility option; every retained node is labelled.",
+    )
     parser.add_argument("--dump-sample", action="store_true", help="Print sample JSON input and exit.")
     parser.add_argument("--validate-only", action="store_true", help="Build the graph and report without writing SVG.")
     args = parser.parse_args()
