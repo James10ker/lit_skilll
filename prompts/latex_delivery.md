@@ -21,12 +21,13 @@ outputs/{topic}/
     └── latex_quality.report.json
 ```
 
-参考复现任务默认至少包含四张基于本次文献集合生成的图：流程图、年度发文量柱状图、连接图、双五年 topic 词云图。若 RQ 要求 topic-year 演化、来源分布或其他统计，再增加对应图表。普通综述只生成与 RQ 有关且数据充分的图。
+参考复现任务默认包含三张基于本次文献集合生成的图：流程图、年度发文量柱状图和双五年 topic 词云图。只有真实合作字段充分时才加入连接图。若 RQ 要求 topic-year 演化、来源分布或其他统计，再增加对应图表。普通综述只生成与 RQ 有关且数据充分的图。
 
 ## LaTeX 契约
 
 - 输出完整 `.tex` 文档，不输出围栏代码片段。
-- 中文稿使用 `ctexart` 或用户给定模板；英文稿使用 `article` 或目标期刊模板。
+- 使用 `article` 或目标期刊英文模板；不得使用 `ctexart`，也不得加载仅为中文排版服务的字体包。
+- 标题、摘要、关键词、章节标题、正文、表头、图题、图注及图内所有标签必须为英语。
 - 至少包含题名、摘要、关键词、引言、数据来源与方法、结果、讨论、结论和参考文献。
 - 图像使用相对路径 `\includegraphics{figures/...}`；每个 figure/table 同时有 `\caption` 与 `\label`，正文使用 `\ref` 引用。
 - 文献引用使用 `\cite{key}` 与 `references.bib`，不得只写作者年份纯文本冒充可解析引用。
@@ -58,11 +59,16 @@ outputs/{topic}/
 python3 tools/validate_latex_review.py \
   --input outputs/{topic}/review.tex \
   --report outputs/{topic}/reports/latex_quality.report.json \
+  --language english \
+  --evidence-ledger outputs/{topic}/data/evidence_ledger.json \
+  --required-rqs RQ1,RQ2,RQ3,RQ4,RQ5 \
+  --figure-report outputs/{topic}/reports/figure_flow.report.json \
+  --figure-report outputs/{topic}/reports/figure_temporal.report.json \
   --min-words 3000 \
-  --min-figures 4
+  --min-figures 3
 ```
 
-`--min-figures 4` 适用于参考综述复现任务；普通综述按已批准的图表计划调整。若环境有 `latexmk`，再运行：
+示例按三张默认图设置。若合作字段充分并生成了连接图，追加相应的 `--figure-report` 并将 `--min-figures` 调为 4；普通综述按已批准的图表计划调整。若环境有 `latexmk`，再运行：
 
 ```bash
 latexmk -pdf -interaction=nonstopmode -halt-on-error outputs/{topic}/review.tex
@@ -71,9 +77,10 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error outputs/{topic}/review.tex
 只有以下条件全部满足才可交付：
 
 1. 每个图表 report 的 `validation.passed = true`。
-2. `latex_quality.report.json` 的 `passed = true`。
+2. `latex_quality.report.json` 的 `passed = true`，其中 evidence ledger 覆盖全部 RQ，且所列图表 reports 全部通过。
 3. 所有 RQ 在 discussion/结果中有直接回答，并可回溯到证据台账。
 4. 图表统计总数、正文数字、纳入文献数和参考文献 key 一致。
 5. 有 LaTeX 编译器时编译成功；没有时明确报告未执行编译，但不得跳过静态门禁。
+6. `required_language` 为 `english` 且 `cjk_character_count` 为 0；图表源文件中的可见标签也已人工或程序检查为英语。
 
 任何门禁失败都要继续修订并重跑，不得把未达标初稿交付给用户。

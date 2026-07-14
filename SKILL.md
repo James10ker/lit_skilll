@@ -1,9 +1,6 @@
 ---
 name: literature-review-skill
-description: "从用户爬取的论文/PDF/元数据独立生成高质量文献综述或复现参考综述：完成证据提取、RQ 综合、流程图、年度发文量图、连接图、双五年 topic 词云、引用与主动质量门禁，达标后直接交付完整 LaTeX 工程。适用于 Claude Code + DeepSeek 或其他模型执行综述写作、AIEd 参考论文复现和图表合成。| Evidence-grounded literature review reproduction with validated figures, self-correction, and compile-ready LaTeX delivery."
-version: "0.5.0"
-user-invocable: true
-argument-hint: "[可选：研究主题、学科方向、目标期刊/课程要求、文献目录路径]"
+description: "从用户爬取的论文/PDF/元数据独立生成全英文高质量文献综述或复现参考综述：完成证据提取、RQ 综合、流程图、年度发文量图、连接图、双五年 topic 词云、引用与主动质量门禁，达标后直接交付完整 LaTeX 工程。适用于 Claude Code + DeepSeek 或其他模型执行综述写作、AIEd 参考论文复现和图表合成。| Evidence-grounded, English-only literature review generation with validated figures, self-correction, and compile-ready LaTeX delivery."
 allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 ---
 
@@ -33,14 +30,19 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 
 ## 产出原则
 
-- 默认使用用户语言；未指定时中文写作，保留英文术语的必要原文。
+- 最终论文默认且强制使用英语。标题、摘要、关键词、章节标题、正文、表头、图题、图注、坐标轴、图例和图中节点标签必须全部为英语；仅原始参考文献条目中的不可译专名可保留原文。
 - 不编造文献、作者、年份、DOI、页码或实验结论；无法确认的内容标记为“待核验”。
 - 区分事实、论文观点与作者综合判断；避免把单篇论文结论泛化成领域共识。
 - 所有关键判断应能回溯到具体文献或用户提供材料。
+- 正文声明的 RQ、`evidence_ledger.json` 覆盖的 RQ 和图表计划必须使用同一组编号；不得出现正文只有 RQ1--RQ3 而报告声称覆盖 RQ1--RQ5 的情况。
+- 必须报告可用全文、仅摘要和仅元数据记录的数量及比例。若多数记录没有全文，方法、实验效果和细节性结论只能基于有全文的子集；不得把标题/摘要级综合写成全量全文综述。
 - 默认不做论文图表内容分析，不分析参考图表的颜色、布局、节点位置或视觉细节。
 - 图表默认是“图表合成”：根据本次检索/筛选得到的文献数据，生成与参考综述同类型、同功能的新图表。
-- 参考复现任务默认生成流程图、年度发文量柱状图、连接图和双五年 topic 词云；普通综述按 RQ 与数据生成必要图表。所有图必须通过各自 report 的几何与数据校验。
+- 参考复现任务默认生成流程图、年度发文量柱状图和双五年 topic 词云；合作数据充分时再生成连接图。普通综述按 RQ 与数据生成必要图表。所有已生成图必须通过各自 report 的几何与数据校验。
 - 双五年 topic 词云以用户指定截止年划分“最近五年”和“此前五年”，两个窗口相邻且不重叠；topic 缺失时先完成透明的人工/模型辅助编码台账，不得编造作者关键词。
+- 主题统计前必须把代码、缩写和自然语言标签映射到唯一规范标签；同一主题不得以 `APPLICATION` 和 `AI Applications in Education` 等多个名称重复计数。
+- “最近五年”只能截止到最新完整年份。当前年或明确不完整年份可出现在年度趋势图中，但不得进入完整五年窗口，也不得支撑跨窗口百分比结论。
+- 合作网络只能使用真实的国家、机构或作者共著字段。所需字段缺失或覆盖不足时跳过该图并披露限制，不得用 author/topic/journal/year 混合共现网络冒充合作网络。
 - “与多组文献综述文章进行对比，生成效果良好”属于论文实验/系统评测层面的验证要求，不代表每篇自动生成的综述正文都必须写对比章节。
 - 任意主题模式下，不要强行套用 AIEd 的 RQ；应根据用户主题自动生成对应 RQ 和图表计划。
 - 若参考综述来源不可访问，例如 WoS、Scopus、ERIC 无权限，必须标明限制，并使用可访问来源近似复现；不得声称获得了无法访问的数据。
@@ -56,11 +58,12 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 | 无本地材料时联网找论文 | 读 `prompts/literature_search.md`；用 WebSearch 检索论文页、预印本、数据库摘要页、综述和基准论文；记录 URL/DOI/可访问性 |
 | 任意主题自动综述 | 读 `prompts/reference_review_synthesis.md`；未给参考综述时，自动生成主题对应 RQ、检索来源、图表计划和综述结构 |
 | 参考综述复现 | 读 `prompts/reference_review_synthesis.md`；给出参考综述时，按参考综述的数据来源、RQ 和图表类型合成报告；仅在复现实验/评测要求下加入效果对比 |
-| Word 转 Markdown | `python3 tools/docx_to_md.py --input {path}.docx --output {dir}/{name}.md` |
-| PowerPoint 转 Markdown | `python3 tools/pptx_to_md.py --input {path}.pptx --output {dir}/{name}.md` |
-| Markdown 转 Word | `python3 tools/md_to_docx.py --input {file}.md --output {file}.docx` |
-| 非 Markdown 交付 | 用户要求不要 Markdown 时，先内部生成临时 `.md`，再转为 `.docx`；对话中只交付 `.docx` 路径 |
-| 图表合成 | 先读 `prompts/figure_table_handling.md`；用本次文献统计数据按需生成流程图/思维导图、趋势图、关系图、饼状图等对应图表 |
+| Office 输入转换 | Word/PPT 作为输入时使用仓库已有转换工具；这不改变最终 LaTeX 交付格式 |
+| 图表合成 | 先读 `prompts/figure_table_handling.md`；所有图必须由本次记录生成并输出验证 report |
+| 年度图与双五年词云 | `python3 tools/render_temporal_topic_figures.py --input {records.json} --output-dir {figures_dir} --prefix {topic} --start-year {start} --end-year {end} --report {report.json}` |
+| 连接图 | `python3 tools/render_bibliometric_network.py --input {records.json} --output {figure.svg} --report {report.json}` |
+| 流程图 | `python3 tools/render_review_figure1.py --spec {spec.json} --output {figure.svg} --report {report.json}` |
+| LaTeX 静态门禁 | `python3 tools/validate_latex_review.py --input {review.tex} --report {quality.json} --language english --evidence-ledger {ledger.json} --required-rqs {RQ1,...} --figure-report {figure.report.json} --min-words 3000 --min-figures {approved_count}` |
 | 人工学术风格重写 | 读 `prompts/human_academic_rewrite.md`；去除模板化结构和机械表达，保留证据链，不新增未核验内容 |
 | 外部检索 | 优先使用权威数据库或搜索入口；可结合 WebSearch 查询 Google Scholar、Semantic Scholar、PubMed、IEEE Xplore、ACM DL、arXiv、CNKI 等公开信息 |
 
@@ -78,6 +81,7 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 | Step 8 | `prompts/review_builder.md` + `prompts/style_reference.md` | 撰写综述正文、引用、图表和结论 |
 | Step 9 | `prompts/review_self_check.md` | 内部自检：覆盖度、引用、逻辑、重复、学术表达、图表必要性 |
 | Step 10 | `prompts/human_academic_rewrite.md` | 在证据链修正后进行人工学术风格重写，降低 AI 模板感 |
+| Step 11 | `prompts/latex_delivery.md` | 生成完整 LaTeX 工程并执行结构、引用、图表和残留指令硬门禁 |
 | 迭代 | `prompts/iteration_context.md` | 判断是在已有综述上增补、删改、重构还是纠错 |
 | 迭代 | `prompts/merger.md` | 合并新增文献、材料或用户意见 |
 | 迭代 | `prompts/correction_handler.md` | 纠正文献事实、引用、观点归属、结构或风格问题 |
@@ -87,13 +91,14 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 1. `Read prompts/intake.md`，确认任务边界；信息不足时只问最关键的问题。
 2. `Read prompts/project_scan.md`，扫描用户提供材料；Office 文件先转换为 Markdown。若用户没有提供材料或目录为空，不要停止，转入 `literature_search.md` 的联网自搜模式。
 3. `Read prompts/research_question_analyzer.md`，形成研究问题、分析维度和初步分类。
-4. `Read prompts/literature_search.md`，补充检索并筛选文献；记录纳入/排除理由。
+4. `Read prompts/literature_search.md`，补充检索并筛选文献；记录纳入/排除理由，并建立逐条关键结论到引用 key 的 `evidence_ledger.json`。
 5. `Read prompts/reference_review_synthesis.md`。若用户只给主题，自动生成主题对应 RQ、检索来源和图表计划；若用户要求按参考综述或计划书合成，则对齐参考综述的数据来源、RQ 和图表类型。不要把系统评测中的“多综述对比”误写成每篇正文必备章节。
-6. `Read prompts/figure_table_handling.md`，根据本次文献统计数据按需合成对应图表；不要做参考图表内容分析。若某类图表无必要或数据不足，说明原因并跳过。
+6. `Read prompts/figure_table_handling.md`，根据本次文献统计数据合成图表。参考复现任务默认生成流程图、年度柱状图和双五年 topic 词云；合作字段充分时才生成连接图。每张已生成图的 report 必须通过；普通综述按 RQ 生成。
 7. `Read prompts/outline_preview.md`，仅在需要用户确认范围或用户明确要求“先给提纲/检索策略”时输出预览；不要把预览命名为研究计划。
 8. `Read prompts/review_builder.md` 与 `prompts/style_reference.md`，撰写正文并按要求落盘；当用户说“写综述/生成综述/撰写研究现状/related work”时，必须进入本步，而不是只交付计划。
 9. `Read prompts/review_self_check.md`，内部自检后修订；不要把自检清单写进正文。
 10. `Read prompts/human_academic_rewrite.md`，对最终正文做人工学术风格重写；不得新增未核验事实，不得把估算、人工编码或二级综述汇总包装成精确统计。
+11. `Read prompts/latex_delivery.md`，生成完整 LaTeX 工程，运行全部图表 report 校验和 `validate_latex_review.py`。失败时自动修订并重跑；只有全部通过才交付。
 
 ## 迭代模式
 
@@ -101,7 +106,7 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 
 - 新增材料或扩展章节：读 `iteration_context.md` -> `merger.md`
 - 指出错误、引用不准、观点归属不清：读 `iteration_context.md` -> `correction_handler.md`
-- 交付文件时另存新版本，不覆盖旧稿，文件名使用 `{主题标识}_{YYYYMMDDHHmmss}.md` / `.docx`
+- 交付文件时保留旧版本；新版本使用独立输出目录或时间戳子目录，主文件始终为 `review.tex`
 
 ## Agent 自检清单
 
@@ -114,12 +119,19 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 □ 用户只给研究主题时，已自动生成适合该主题的 RQ、检索来源、筛选标准和图表计划，未硬套 AIEd 模板
 □ 若按参考综述复现，已对齐参考综述的数据来源、RQ 和图表类型；只有复现实验/评测任务才加入效果对比
 □ 图表是基于本次文献统计数据按需合成的同类型图表；未默认分析或复制参考论文原图，也未为凑数量编造图表
+□ 参考复现任务已生成流程图、年度柱状图和双五年 topic 词云；合作字段充分时已生成连接图，且每个已有 report 均 `validation.passed=true`
+□ 双五年窗口相邻且不重叠；topic 来源和逐篇编码可追溯
+□ 最近五年截止于最新完整年份；不完整年份未进入窗口比较
+□ topic 代码、缩写和展示标签已归一化，同一概念未重复计数
+□ 合作网络有真实合作字段支撑；数据不足时已跳过而非生成替代性混合网络
 □ 若 WoS、Scopus、ERIC 等来源不可访问，已明确标注访问限制和近似复现来源
 □ 综述不是论文摘要堆叠，而是按问题、方法、证据和争议综合
 □ 已说明检索范围、筛选标准和残余不确定性
 □ 已进行人工学术风格重写：删除机械图注、模板化 RQ 填空、过度粗体/列表和空泛宏大判断
 □ 重写没有新增未核验文献、数据或结论，也没有掩盖 AI 生成、估算数据或人工编码事实
 □ 引用格式与用户要求一致；不确定引用已标记待核验
-□ 用户要求不要 Markdown 时，最终交付为 `.docx`；`.md` 仅作为内部中间稿，不作为主交付物
-□ 若交付文件，已使用时间戳新文件名，未覆盖旧稿
+□ 关键结论已写入 `evidence_ledger.json`，引用 key 可解析，正文数字与图表/纳入记录一致
+□ 最终交付为完整 `.tex` + `.bib` + figures/data/reports 工程，不以 Markdown 草稿代替
+□ 标题、正文、表格及所有图形文字均为英语，且使用 `--language english` 验证
+□ `validate_latex_review.py` 已通过；有 LaTeX 编译器时已编译通过
 ```

@@ -8,14 +8,14 @@
 
 ## 版本规则
 
-除非用户明确要求覆盖，所有交付稿另存为新文件：
+除非用户明确要求覆盖，每轮修订使用独立版本目录，例如：
 
-`{主题标识}_{YYYYMMDDHHmmss}.md`
+`outputs/{主题标识}/versions/{YYYYMMDDHHmmss}/review.tex`
 
-需要 Word 时生成同名 `.docx`。
+同步保留该版本的 `.bib`、figures、data 和 reports；修订后重新执行全部质量门禁。
 
 ## 记录
 
 对重要修订保留简短修订记录，可追加到同目录：
 
-`综述修订记录.md`
+`revision_log.txt`

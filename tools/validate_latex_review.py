@@ -36,6 +36,7 @@ SECTION_ALIASES = {
 }
 
 IMAGE_EXTENSIONS = (".pdf", ".png", ".jpg", ".jpeg", ".eps", ".svg")
+CJK_PATTERN = re.compile(r"[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]")
 PROMPT_TRACE_PATTERNS = (
     (re.compile(r"```"), "Markdown fenced code block marker"),
     (re.compile(r"(?m)^\s{0,3}#{1,6}\s+\S"), "Markdown heading marker"),
@@ -123,7 +124,7 @@ def _word_count(text: str) -> tuple[int, int, int]:
     text = re.sub(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])?", " ", text)
     text = re.sub(r"[{}$^_~&]", " ", text)
     latin_words = len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b", text))
-    cjk_characters = len(re.findall(r"[\u3400-\u9fff]", text))
+    cjk_characters = len(CJK_PATTERN.findall(text))
     effective_words = latin_words + math.ceil(cjk_characters / 2)
     return effective_words, latin_words, cjk_characters
 
@@ -185,7 +186,88 @@ def _citation_keys(text: str) -> set[str]:
     return keys
 
 
-def validate_latex_review(input_path: Path, min_words: int = 0, min_figures: int = 0) -> ValidationResult:
+def _validate_evidence_ledger(
+    ledger_path: Path,
+    bibliography_keys: set[str],
+    required_rqs: tuple[str, ...],
+    errors: list[str],
+) -> dict[str, object]:
+    if not ledger_path.exists():
+        errors.append(f"Evidence ledger does not exist: {ledger_path}")
+        return {"claim_count": 0, "covered_rqs": []}
+    try:
+        payload = json.loads(ledger_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        errors.append(f"Evidence ledger is not valid UTF-8 JSON: {exc}")
+        return {"claim_count": 0, "covered_rqs": []}
+    claims = payload.get("claims", payload) if isinstance(payload, dict) else payload
+    if not isinstance(claims, list):
+        errors.append("Evidence ledger must be a JSON list or an object with a claims list.")
+        return {"claim_count": 0, "covered_rqs": []}
+
+    covered_rqs: set[str] = set()
+    for index, claim in enumerate(claims, start=1):
+        if not isinstance(claim, dict):
+            errors.append(f"Evidence claim #{index} must be an object.")
+            continue
+        claim_id = str(claim.get("claim_id", "")).strip()
+        statement = str(claim.get("claim", "")).strip()
+        sources = claim.get("sources")
+        evidence = claim.get("evidence")
+        confidence = str(claim.get("confidence", "")).strip().lower()
+        if not claim_id:
+            errors.append(f"Evidence claim #{index} is missing claim_id.")
+        if not statement:
+            errors.append(f"Evidence claim #{index} is missing claim text.")
+        if not isinstance(sources, list) or not [item for item in sources if str(item).strip()]:
+            errors.append(f"Evidence claim #{index} must contain at least one source key.")
+            sources = []
+        if not isinstance(evidence, list) or not [item for item in evidence if str(item).strip()]:
+            errors.append(f"Evidence claim #{index} must contain at least one evidence excerpt or summary.")
+        if confidence not in {"high", "medium", "low"}:
+            errors.append(f"Evidence claim #{index} has invalid confidence: {confidence or '<missing>'}")
+        for source in sources:
+            key = str(source).strip()
+            if key and key not in bibliography_keys:
+                errors.append(f"Evidence claim {claim_id or f'#{index}'} references unresolved bibliography key: {key}")
+        upper_id = claim_id.upper()
+        for rq in required_rqs:
+            if upper_id == rq or upper_id.startswith(f"{rq}-"):
+                covered_rqs.add(rq)
+    for rq in required_rqs:
+        if rq not in covered_rqs:
+            errors.append(f"Evidence ledger does not cover required research question: {rq}")
+    return {"claim_count": len(claims), "covered_rqs": sorted(covered_rqs)}
+
+
+def _validate_figure_reports(report_paths: tuple[Path, ...], errors: list[str]) -> dict[str, object]:
+    passed_count = 0
+    for path in report_paths:
+        if not path.exists():
+            errors.append(f"Figure validation report does not exist: {path}")
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            errors.append(f"Figure validation report is not valid UTF-8 JSON ({path}): {exc}")
+            continue
+        validation = payload.get("validation") if isinstance(payload, dict) else None
+        if not isinstance(validation, dict) or validation.get("passed") is not True:
+            errors.append(f"Figure validation did not pass: {path}")
+            continue
+        passed_count += 1
+    return {"report_count": len(report_paths), "passed_report_count": passed_count}
+
+
+def validate_latex_review(
+    input_path: Path,
+    min_words: int = 0,
+    min_figures: int = 0,
+    evidence_ledger: Path | None = None,
+    required_rqs: tuple[str, ...] = (),
+    figure_reports: tuple[Path, ...] = (),
+    language: str = "any",
+) -> ValidationResult:
     errors: list[str] = []
     warnings: list[str] = []
     path = input_path.resolve()
@@ -227,9 +309,13 @@ def validate_latex_review(input_path: Path, min_words: int = 0, min_figures: int
 
     graphics = re.findall(r"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}", text)
     missing_graphics = []
+    resolved_graphics: list[Path] = []
     for graphic in graphics:
-        if _resolve_graphic(graphic.strip(), base_dir) is None:
+        resolved = _resolve_graphic(graphic.strip(), base_dir)
+        if resolved is None:
             missing_graphics.append(graphic.strip())
+        else:
+            resolved_graphics.append(resolved)
     for graphic in missing_graphics:
         errors.append(f"includegraphics path does not exist: {graphic}")
 
@@ -249,7 +335,41 @@ def validate_latex_review(input_path: Path, min_words: int = 0, min_figures: int
     for key in unresolved:
         errors.append(f"Citation key is unresolved: {key}")
 
+    normalized_rqs = tuple(rq.strip().upper() for rq in required_rqs if rq.strip())
+    ledger_metrics = {"claim_count": 0, "covered_rqs": []}
+    if evidence_ledger is not None:
+        ledger_path = evidence_ledger if evidence_ledger.is_absolute() or evidence_ledger.exists() else base_dir / evidence_ledger
+        ledger_metrics = _validate_evidence_ledger(ledger_path, bibliography_keys, normalized_rqs, errors)
+    elif normalized_rqs:
+        errors.append("Required research questions were specified without an evidence ledger.")
+    resolved_report_paths = tuple(
+        path if path.is_absolute() or path.exists() else base_dir / path
+        for path in figure_reports
+    )
+    figure_report_metrics = _validate_figure_reports(resolved_report_paths, errors)
+
     words, latin_words, cjk_characters = _word_count(text)
+    non_english_figure_sources: list[str] = []
+    if language == "english" and cjk_characters:
+        errors.append(
+            "English-only output contains "
+            f"{cjk_characters} CJK characters; translate the title, body, headings, captions, notes, and table text."
+        )
+    if language == "english":
+        for graphic in resolved_graphics:
+            svg_path = graphic if graphic.suffix.lower() == ".svg" else graphic.with_suffix(".svg")
+            if not svg_path.exists():
+                continue
+            try:
+                svg_text = svg_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                svg_text = svg_path.read_text(encoding="latin-1")
+            svg_cjk_count = len(CJK_PATTERN.findall(svg_text))
+            if svg_cjk_count:
+                non_english_figure_sources.append(str(svg_path))
+                errors.append(
+                    f"English-only output has {svg_cjk_count} CJK characters in figure source: {svg_path}"
+                )
     figure_count = len(re.findall(r"\\begin\{figure\*?\}", text))
     if min_words and words < min_words:
         errors.append(f"Word count {words} is below minimum {min_words}.")
@@ -260,14 +380,18 @@ def validate_latex_review(input_path: Path, min_words: int = 0, min_figures: int
         "word_count": words,
         "latin_word_count": latin_words,
         "cjk_character_count": cjk_characters,
+        "required_language": language,
         "figure_count": figure_count,
         "includegraphics_count": len(graphics),
         "missing_includegraphics_count": len(missing_graphics),
+        "non_english_figure_sources": non_english_figure_sources,
         "citation_count": len(citation_keys),
         "resolved_citation_count": len(citation_keys) - len(unresolved),
         "bibliography_key_count": len(bibliography_keys),
         "section_headings": headings,
         "required_sections": found_sections,
+        "evidence_ledger": ledger_metrics,
+        "figure_reports": figure_report_metrics,
     }
     return ValidationResult(errors=errors, warnings=warnings, metrics=metrics)
 
@@ -278,12 +402,29 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--report", required=True, type=Path, help="Path to write the JSON validation report.")
     parser.add_argument("--min-words", type=int, default=0, help="Minimum acceptable word count.")
     parser.add_argument("--min-figures", type=int, default=0, help="Minimum acceptable figure count.")
+    parser.add_argument("--evidence-ledger", type=Path, help="Evidence ledger JSON, relative to the .tex file or absolute.")
+    parser.add_argument("--required-rqs", default="", help="Comma-separated RQ identifiers that the ledger must cover.")
+    parser.add_argument("--figure-report", action="append", default=[], type=Path, help="Figure report JSON that must have validation.passed=true; repeat as needed.")
+    parser.add_argument(
+        "--language",
+        choices=("any", "english"),
+        default="any",
+        help="Require the complete LaTeX manuscript to use the selected language.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
-    result = validate_latex_review(args.input, min_words=args.min_words, min_figures=args.min_figures)
+    result = validate_latex_review(
+        args.input,
+        min_words=args.min_words,
+        min_figures=args.min_figures,
+        evidence_ledger=args.evidence_ledger,
+        required_rqs=tuple(args.required_rqs.split(",")),
+        figure_reports=tuple(args.figure_report),
+        language=args.language,
+    )
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(result.to_dict(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return 0 if result.passed else 1

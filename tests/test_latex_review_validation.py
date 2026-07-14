@@ -183,6 +183,76 @@ Results text.
         self.assertGreater(result["metrics"]["cjk_character_count"], 50)
         self.assertGreaterEqual(result["metrics"]["word_count"], 30)
 
+    def test_english_language_gate_accepts_english_manuscript(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tex = _write_passing_artifact(Path(tmp))
+
+            result = validate_latex_review(tex, language="english").to_dict()
+
+        self.assertTrue(result["passed"], result["errors"])
+        self.assertEqual(result["metrics"]["required_language"], "english")
+        self.assertEqual(result["metrics"]["cjk_character_count"], 0)
+
+    def test_english_language_gate_rejects_cjk_manuscript_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tex = _write_passing_artifact(Path(tmp))
+            text = tex.read_text(encoding="utf-8").replace("Evidence map", "证据图")
+            tex.write_text(text, encoding="utf-8")
+
+            result = validate_latex_review(tex, language="english").to_dict()
+
+        self.assertFalse(result["passed"])
+        self.assertTrue(any("English-only output" in error for error in result["errors"]))
+        self.assertGreater(result["metrics"]["cjk_character_count"], 0)
+
+    def test_english_language_gate_rejects_cjk_in_svg_sibling(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tex = _write_passing_artifact(root)
+            (root / "figure.svg").write_text("<svg><text>主题演化</text></svg>", encoding="utf-8")
+
+            result = validate_latex_review(tex, language="english").to_dict()
+
+        self.assertFalse(result["passed"])
+        self.assertTrue(any("in figure source" in error for error in result["errors"]))
+        self.assertEqual(len(result["metrics"]["non_english_figure_sources"]), 1)
+
+    def test_validate_latex_review_checks_evidence_and_figure_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            tex = _write_passing_artifact(tmp_path)
+            ledger = tmp_path / "evidence.json"
+            ledger.write_text(
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "claim_id": "RQ1-C01",
+                                "claim": "The evidence base has a measurable publication trend.",
+                                "sources": ["smith2024"],
+                                "evidence": ["The included record reports the observed trend."],
+                                "confidence": "high",
+                                "limitations": "Single-record fixture.",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            figure_report = tmp_path / "figure.report.json"
+            figure_report.write_text(json.dumps({"validation": {"passed": True}}), encoding="utf-8")
+
+            result = validate_latex_review(
+                tex,
+                evidence_ledger=ledger,
+                required_rqs=("RQ1",),
+                figure_reports=(figure_report,),
+            ).to_dict()
+
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["metrics"]["evidence_ledger"]["covered_rqs"], ["RQ1"])
+        self.assertEqual(result["metrics"]["figure_reports"]["passed_report_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

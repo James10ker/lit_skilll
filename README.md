@@ -1,6 +1,6 @@
 # 论文综述撰写 Skill
 
-从论文、笔记、旧稿和检索结果出发，辅助完成文献综述写作；也支持按给定参考综述的数据来源、研究问题和图表类型进行复现式合成。效果对比用于复现实验或系统评测，不是每篇综述正文的必备章节。
+从爬取的论文、PDF 和元数据出发，独立完成证据提取、图表合成、综述写作与主动质检；通过门禁后直接交付全英文的完整 LaTeX 工程。语言门禁同时检查正文和已有 SVG 图形中的中文残留。支持 Claude Code + DeepSeek 或其他模型按参考综述的数据来源、研究问题和图表类型进行复现式生成。
 
 ## 能力
 
@@ -13,10 +13,11 @@
 | 框架构建 | 提炼研究问题、分类维度、方法谱系、争议和未来方向 |
 | 任意主题综述 | 用户只给主题时，自动生成 RQ、检索来源、图表计划和综述 |
 | 参考综述复现 | 按参考综述的数据来源、RQ 和图表类型合成新综述；需要评测时再对比效果 |
-| 图表合成 | 根据本次文献统计数据按需生成趋势图、关系图、饼状图、流程图或思维导图 |
+| 图表合成 | 生成并验证流程图、年度发文量柱状图和双五年 topic 词云；合作字段充分时生成连接图 |
 | 综述成稿 | 按“观点 -> 证据 -> 综合判断”写作，避免论文摘要堆叠 |
 | 人工学术重写 | 修正证据链后降低模板化、清单化和 prompt 痕迹，输出更自然的学术正文 |
 | 引用管理 | 保留引用证据链，不编造作者、年份、DOI、页码或结论 |
+| LaTeX 门禁 | 校验结构、图表、引用 key、证据台账、RQ 覆盖与 prompt 残留，失败自动修订 |
 | 迭代修订 | 在已有综述上合并新文献、纠错、改结构、润色或重写 |
 
 ## 安装
@@ -30,7 +31,7 @@ mkdir -p .claude/skills
 cp -a literature-review-skill .claude/skills/literature-review-skill
 ```
 
-基础依赖用于 Office 转 Markdown、Markdown 转 Word：
+可选依赖用于 Office 输入转换：
 
 ```bash
 pip install -r requirements.txt
@@ -38,7 +39,7 @@ pip install -r requirements.txt
 
 其中 `PyMuPDF` 用于从 PDF 中抽取图片对象、页面图和疑似 Figure/Table 图题。
 
-如需把 Mermaid 图渲染进 Word，在 `tools/` 下安装 Node 依赖：
+SVG 转 PNG 需要系统命令 `rsvg-convert`；如需 Mermaid 兼容能力，可在 `tools/` 下安装 Node 依赖：
 
 ```bash
 cd tools
@@ -66,7 +67,7 @@ npm install
 - 篇幅、语言、引用格式
 - 本地资料路径或已有稿件路径
 
-说明：计划书中的图表类型是 skill 库需要支持的能力，不代表每篇综述都必须全部生成。只有用户要求、RQ 需要且数据足够时才生成对应图表。
+说明：参考综述复现任务默认生成流程图、年度柱状图和相邻双五年 topic 词云；仅在合作字段充分时生成连接图。普通综述仅生成与 RQ 相关且数据充分的图。
 
 ## 项目结构
 
@@ -84,23 +85,19 @@ literature-review-skill/
 │   ├── review_builder.md
 │   ├── human_academic_rewrite.md
 │   ├── review_self_check.md
+│   ├── latex_delivery.md
 │   ├── iteration_context.md
 │   ├── merger.md
 │   ├── correction_handler.md
 │   └── style_reference.md
 ├── tools/
-│   ├── docx_to_md.py
-│   ├── pdf_extract_figures.py
-│   ├── pptx_to_md.py
-│   ├── md_to_docx.py
-│   └── mermaid_render.py
+│   ├── render_review_figure1.py
+│   ├── render_bibliometric_network.py
+│   ├── render_temporal_topic_figures.py
+│   └── validate_latex_review.py
 └── requirements.txt
 ```
 
 ## 交付约定
 
-默认输出到：
-
-`outputs/{主题标识}/{主题标识}_{YYYYMMDDHHmmss}.md`
-
-需要 Word 时生成同名 `.docx`。如果用户明确说“不要 md / 只要 Word”，Markdown 只作为内部中间稿，最终交付 `.docx`。除非用户明确要求覆盖，否则每轮修订都另存新版本。
+默认输出到 `outputs/{主题标识}/`，包含 `review.tex`、`references.bib`、`figures/`、`data/evidence_ledger.json` 和 `reports/`。所有图表 report 与 `latex_quality.report.json` 通过后才交付；若环境提供 LaTeX 编译器，还必须完成编译验证。

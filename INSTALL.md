@@ -26,11 +26,11 @@ cp -a literature-review-skill .claude/skills/literature-review-skill
 pip install -r requirements.txt
 ```
 
-用途：
+可选用途：
 
 - `docx_to_md.py`: Word 转 Markdown
 - `pptx_to_md.py`: PowerPoint 转 Markdown
-- `md_to_docx.py`: Markdown 转 Word
+- Office/Markdown 格式转换（仅作为输入兼容或用户明确要求的附加输出）
 
 Mermaid 图渲染需要 Node.js：
 
@@ -39,4 +39,4 @@ cd tools
 npm install
 ```
 
-若只使用纯 Markdown 输出，可不安装 Node 依赖。
+核心年度图、词云和 LaTeX 静态门禁只依赖 Python 标准库。生成 PNG 需安装 `rsvg-convert`；编译最终稿建议安装 XeLaTeX 或 `latexmk`。
