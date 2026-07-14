@@ -49,12 +49,17 @@
 
 ## 落盘
 
-用户要求文件时，默认保存为：
+默认保存为完整 LaTeX 工程：
 
-- `outputs/{主题标识}/{主题标识}_{YYYYMMDDHHmmss}.md`
-- 需要 Word 时再生成同名 `.docx`
+- `outputs/{主题标识}/review.tex`
+- `outputs/{主题标识}/references.bib`
+- `outputs/{主题标识}/figures/`
+- `outputs/{主题标识}/data/evidence_ledger.json`
+- `outputs/{主题标识}/reports/`
 
-若用户说“不要 md / 不要 Markdown / 只要 Word / 直接给 Word”，则：
+读取 `prompts/latex_delivery.md` 并执行静态质量门禁。默认不把 Markdown/Word 作为主交付物。只有用户明确要求 Word 时，才额外生成 `.docx`；不得用 Word 交付替代 LaTeX 源稿。
+
+若用户明确要求 Word，则：
 
 - Markdown 只作为内部中间稿使用。
 - 必须运行 `tools/md_to_docx.py` 生成 `.docx`。

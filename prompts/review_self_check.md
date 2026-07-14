@@ -24,4 +24,14 @@
 
 ## 修订动作
 
-发现问题后直接修订正文，并在交付说明中简述已经处理的主要问题；不要输出完整自检过程。若发现模板化或 AI 味明显，继续读取 `human_academic_rewrite.md` 做最终重写。
+发现问题后直接修订正文；不要输出完整自检过程。若发现模板化或 AI 味明显，继续读取 `human_academic_rewrite.md` 做最终重写。
+
+然后读取 `latex_delivery.md` 并执行硬门禁：
+
+- 每张图的 report 必须通过，且图中统计数字与正文一致。
+- 双五年 topic 窗口必须相邻、不重叠、年限明确，两个窗口都有真实记录和 topic 数据。
+- 每个关键结论必须能映射到 `evidence_ledger.json` 中至少一个可解析引用 key。
+- `validate_latex_review.py` 必须返回 0 且报告 `passed=true`。
+- 有 LaTeX 编译器时必须编译通过。
+
+任一项未通过时继续修订并重跑，不得交付未达标草稿。

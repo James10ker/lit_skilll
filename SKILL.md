@@ -1,7 +1,7 @@
 ---
 name: literature-review-skill
-description: "论文综述与参考综述复现式生成：按用户主题/RQ或给定参考综述的数据来源、研究问题和图表类型，检索筛选文献，按需合成统计图表，回答研究问题，生成带引用且经过人工学术风格重写的综述报告；效果对比用于参考复现或系统评测，不是每篇正文必备章节。| Literature review and reference-review reproduction: literature discovery, screening, RQ answering, optional chart synthesis, evidence-grounded academic rewriting, report drafting, and evaluation when requested."
-version: "0.4.0"
+description: "从用户爬取的论文/PDF/元数据独立生成高质量文献综述或复现参考综述：完成证据提取、RQ 综合、流程图、年度发文量图、连接图、双五年 topic 词云、引用与主动质量门禁，达标后直接交付完整 LaTeX 工程。适用于 Claude Code + DeepSeek 或其他模型执行综述写作、AIEd 参考论文复现和图表合成。| Evidence-grounded literature review reproduction with validated figures, self-correction, and compile-ready LaTeX delivery."
+version: "0.5.0"
 user-invocable: true
 argument-hint: "[可选：研究主题、学科方向、目标期刊/课程要求、文献目录路径]"
 allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
@@ -9,14 +9,14 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 
 # 论文综述撰写 Skill
 
-本技能覆盖 **选题澄清** -> **资料扫描或联网自搜** -> **文献检索与筛选** -> **研究问题生成/对齐** -> **按需图表合成** -> **研究问题回答** -> **综述成稿** -> **人工学术风格重写** 的完整流程。参考复现或系统评测任务可加入 **效果对比**。分步指令位于 `prompts/`；执行每一步前先读取对应文件。
+本技能覆盖 **选题澄清** -> **资料扫描或联网自搜** -> **文献检索与筛选** -> **证据台账** -> **研究问题生成/对齐** -> **可验证图表合成** -> **研究问题回答** -> **LaTeX 成稿** -> **主动质检与修订** 的完整流程。参考复现或系统评测任务可加入 **效果对比**。分步指令位于 `prompts/`；执行每一步前先读取对应文件。
 
 支持两种模式：
 
 - **任意主题自动综述模式**：用户只给一个研究主题时，自动生成合适的 RQ、检索来源、筛选标准、图表类型和综述正文。
 - **参考综述复现模式**：用户给出参考综述或计划书时，按参考综述的数据来源、RQ 和图表类型合成对应综述；只有用户要求复现评测、效果比较或论文实验输出时，才加入效果对比。
 
-默认交付物是 **文献综述正文或可直接进入正文的综述草稿**，不是研究计划、开题报告或写作方案。只有用户明确要求“研究计划、开题、proposal、写作计划、只要提纲/检索策略”时，才停留在计划/提纲层面。
+默认交付物是通过门禁的 **完整 LaTeX 综述工程**，不是研究计划、开题报告、写作方案或 Markdown 草稿。只有用户明确要求“研究计划、开题、proposal、写作计划、只要提纲/检索策略”时，才停留在计划/提纲层面。
 
 ## 触发条件
 
@@ -39,12 +39,13 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 - 所有关键判断应能回溯到具体文献或用户提供材料。
 - 默认不做论文图表内容分析，不分析参考图表的颜色、布局、节点位置或视觉细节。
 - 图表默认是“图表合成”：根据本次检索/筛选得到的文献数据，生成与参考综述同类型、同功能的新图表。
-- 图表是按需能力，不是硬性数量要求；流程图/思维导图、趋势图、关系图、饼状图等类型必须支持，但只有当用户要求、RQ 需要且数据足够时才生成。
+- 参考复现任务默认生成流程图、年度发文量柱状图、连接图和双五年 topic 词云；普通综述按 RQ 与数据生成必要图表。所有图必须通过各自 report 的几何与数据校验。
+- 双五年 topic 词云以用户指定截止年划分“最近五年”和“此前五年”，两个窗口相邻且不重叠；topic 缺失时先完成透明的人工/模型辅助编码台账，不得编造作者关键词。
 - “与多组文献综述文章进行对比，生成效果良好”属于论文实验/系统评测层面的验证要求，不代表每篇自动生成的综述正文都必须写对比章节。
 - 任意主题模式下，不要强行套用 AIEd 的 RQ；应根据用户主题自动生成对应 RQ 和图表计划。
 - 若参考综述来源不可访问，例如 WoS、Scopus、ERIC 无权限，必须标明限制，并使用可访问来源近似复现；不得声称获得了无法访问的数据。
 - 最终正文必须经过“人工学术风格重写”：先修正事实、数量、图表来源和引用证据链，再降低模板化、清单化和 prompt 痕迹。该步骤用于提升学术可读性和可信度，不用于掩盖 AI 使用或包装不可核验内容。
-- 若用户要求交付文件，默认可交付 `{主题标识}_{YYYYMMDDHHmmss}.md` 与同名 `.docx`。若用户说“不要 md / 不要 Markdown / 只要 Word”，则 Markdown 只作为内部中间稿，最终只交付 `.docx`。
+- 最终默认交付 `review.tex`、`references.bib`、图表 PNG/SVG、图表 reports、纳入记录和 `evidence_ledger.json`；只有全部质量门禁通过才输出。
 
 ## 工具与资料处理
 
