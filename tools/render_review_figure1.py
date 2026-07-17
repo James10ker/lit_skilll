@@ -89,12 +89,12 @@ DEFAULT_SPEC: dict[str, Any] = {
     },
     "layout": {
         "font_size": 16,
-        "title_font_size": 34,
+        "title_font_size": 30,
         "caption_font_size": 22,
-        "stage_font_size": 26,
-        "box_rx": 1,
-        "panel_rx": 4,
-        "stage_pill_rx": 18,
+        "stage_font_size": 22,
+        "box_rx": 10,
+        "panel_rx": 10,
+        "stage_pill_rx": 10,
         "canvas_width": 1820,
         "canvas_height": 1380,
         "max_relayout_passes": 1,
@@ -102,21 +102,22 @@ DEFAULT_SPEC: dict[str, Any] = {
 }
 
 
+# ── Grid & Spacing ──
+GRID_UNIT = 8
 BODY_TEXT_PAD_Y = 38
 BOX_GAP_TOLERANCE = 8
-CONNECTOR_COLOR = "#111111"
 PANEL_PADDING_BALANCE_TOLERANCE = 32.0
-ALIGNMENT_TOLERANCE = 4.0
-GAP_VARIANCE_TOLERANCE = 6.0
-SIZE_VARIANCE_TOLERANCE = 6.0
+ALIGNMENT_TOLERANCE = 2.0
+GAP_VARIANCE_TOLERANCE = 16.0
+SIZE_VARIANCE_TOLERANCE = 2.0
 MAX_EDGE_CROSSINGS = 0
 MAX_TEXT_LINE_UNITS = 34.0
 MIN_TEXT_PIXEL_HEIGHT = 12.0
 MIN_INTER_PANEL_GAP = 48.0
 MAX_INTER_PANEL_GAP = 100.0
 MAX_INTER_PANEL_GAP_RATIO = 0.12
-BIG_ARROW_TAIL_INSET = 15.0
-BIG_ARROW_TIP_INSET = 15.0
+BIG_ARROW_TAIL_INSET = 16.0
+BIG_ARROW_TIP_INSET = 16.0
 MIN_BIG_ARROW_LENGTH = 48.0
 PREFERRED_BIG_ARROW_LENGTH = 64.0
 MAX_BIG_ARROW_LENGTH = 96.0
@@ -128,27 +129,49 @@ MIN_RIGHT_PANEL_SHARE = 0.22
 MAX_RIGHT_PANEL_SHARE = 0.30
 MIN_GAP_SHARE = 0.04
 MAX_GAP_SHARE = 0.08
-STAGE_PILLS = {
-    "identification": (92.0, 275.0, 42.0, 170.0),
-    "screening": (92.0, 605.0, 42.0, 150.0),
-    "included": (92.0, 955.0, 42.0, 145.0),
-}
-BOX_SAFE_GAP = 18.0
+BOX_SAFE_GAP = 16.0
 
-BOX_STYLE_BY_ID = {
-    "strategy_one": ("#eef5ff", "#4c7dd9"),
-    "strategy_two": ("#eef5ff", "#4c7dd9"),
-    "total_box": ("#eef5ff", "#4c7dd9"),
-    "manual_box": ("#edf9f3", "#49a977"),
-    "analysis_box": ("#edf9f3", "#49a977"),
-    "duplicate_label": ("#fff6ea", "#d9963c"),
-    "citation_box": ("#fff6ea", "#d9963c"),
-    "excluded_box": ("#f4efff", "#8a68d6"),
-    "analysis_step_1": ("#eef5ff", "#4c7dd9"),
-    "analysis_step_2": ("#edf9f3", "#49a977"),
-    "analysis_step_3": ("#fff6ea", "#d9963c"),
-    "analysis_step_4": ("#f4efff", "#8a68d6"),
+# ── Unified visual constants ──
+CORNER_RADIUS = 10.0
+STROKE_WIDTH = 1.5
+SHADOW_COLOR = "#d0d7e2"
+
+# ── Colour palette (refined, semantic, same-hue strokes) ──
+#   (fill, stroke, text-weight)
+COLOR_PRIMARY   = ("#eaf1fb", "#7a9cc6")   # blue — data-source / merge / analysis-step
+COLOR_POSITIVE  = ("#e8f5ee", "#6dae8a")   # green — screening / included (focal)
+COLOR_ANNOTATE  = ("#faf6ed", "#c4a87c")   # warm — side labels / citations
+COLOR_EXCLUDE   = ("#faf0f0", "#c47a7a")   # coral — excluded
+
+BOX_STYLE_BY_ID: dict[str, tuple[str, str]] = {
+    "strategy_one":     COLOR_PRIMARY,
+    "strategy_two":     COLOR_PRIMARY,
+    "total_box":        COLOR_PRIMARY,
+    "manual_box":       COLOR_POSITIVE,
+    "analysis_box":     COLOR_POSITIVE,
+    "duplicate_label":  COLOR_ANNOTATE,
+    "citation_box":     COLOR_ANNOTATE,
+    "excluded_box":     COLOR_EXCLUDE,
+    "analysis_step_1":  COLOR_PRIMARY,
+    "analysis_step_2":  COLOR_PRIMARY,
+    "analysis_step_3":  COLOR_PRIMARY,
+    "analysis_step_4":  COLOR_PRIMARY,
 }
+
+# ── Connector system ──
+CONNECTOR_COLOR_MAIN   = "#8aa0b8"  # main flow lines
+CONNECTOR_COLOR_BRANCH = "#bcc8d4"  # annotation / branch lines
+CONNECTOR_WIDTH_MAIN   = 2.0
+CONNECTOR_WIDTH_BRANCH = 1.0
+CONNECTOR_DASH = "6 4"
+
+STAGE_PILLS = {
+    "identification": (96.0, 272.0, 40.0, 216.0),
+    "screening":      (96.0, 608.0, 40.0, 168.0),
+    "included":       (96.0, 952.0, 40.0, 144.0),
+}
+
+BOX_ICON_BY_ID: dict[str, str] = {}
 
 BOX_ICON_BY_ID = {
     "strategy_one": "source",
@@ -380,24 +403,31 @@ def draw_multiline_text(
 
 
 def draw_box(box: Box, *, shadow: bool = False) -> str:
-    shadow_el = (
-        f'<rect x="{box.x + 7:.1f}" y="{box.y + 9:.1f}" width="{box.w:.1f}" '
-        f'height="{box.h:.1f}" rx="{box.rx:.1f}" fill="#d9e2f5" opacity="0.34"/>'
-    )
+    rx = max(box.rx, CORNER_RADIUS)
+    sw = STROKE_WIDTH
+    # subtle shadow only on main-flow nodes
+    if shadow and box.id not in {"duplicate_label", "excluded_box", "citation_box",
+                                   "analysis_step_1", "analysis_step_2",
+                                   "analysis_step_3", "analysis_step_4"}:
+        shadow_el = (
+            f'<rect x="{box.x + 4:.1f}" y="{box.y + 5:.1f}" width="{box.w:.1f}" '
+            f'height="{box.h:.1f}" rx="{rx:.1f}" fill="{SHADOW_COLOR}" opacity="0.22"/>'
+        )
+    else:
+        shadow_el = ""
     rect = (
         f'<rect x="{box.x:.1f}" y="{box.y:.1f}" width="{box.w:.1f}" height="{box.h:.1f}" '
-        f'rx="{box.rx:.1f}" fill="{box.fill}" fill-opacity="0.88" stroke="{box.stroke}" '
-        f'stroke-width="{box.stroke_width:.1f}" opacity="0.98"/>'
+        f'rx="{rx:.1f}" fill="{box.fill}" fill-opacity="0.92" stroke="{box.stroke}" '
+        f'stroke-width="{sw:.1f}" opacity="0.98"/>'
     )
-    icon = draw_box_icon(box)
     text = draw_multiline_text(
         box.x + box.w / 2,
         box.y + box.h / 2,
-        box.w - 36,
+        box.w - 28,
         box.text,
         font_size=box.font_size,
     )
-    return (shadow_el if shadow else "") + rect + icon + text
+    return shadow_el + rect + text
 
 
 def draw_box_icon(box: Box) -> str:
@@ -456,7 +486,7 @@ def draw_box_icon(box: Box) -> str:
 def draw_label_pill(x: float, y: float, w: float, h: float, text: str, font_size: int, rx: float) -> str:
     rect = (
         f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="{rx:.1f}" '
-        f'fill="#d9ebff" stroke="#72a8eb" stroke-width="2.2"/>'
+        f'fill="#ebf0f7" stroke="#9aafc4" stroke-width="{STROKE_WIDTH:.1f}"/>'
     )
     text_el = (
         f'<g transform="translate({x + w / 2:.1f},{y + h / 2:.1f}) rotate(-90)">'
@@ -477,11 +507,12 @@ def draw_panel(
     title: str | None = None,
     font_size: int = 23,
     rx: float = 18,
+    opacity: float = 0.9,
 ) -> str:
     panel = (
         f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="{rx:.1f}" '
-        f'fill="none" stroke="#78a7ea" stroke-width="2.4" '
-        f'stroke-dasharray="8 7" opacity="0.9"/>'
+        f'fill="none" stroke="#a8bbd0" stroke-width="{STROKE_WIDTH:.1f}" '
+        f'stroke-dasharray="8 7" opacity="{opacity:.2f}"/>'
     )
     if not title:
         return panel
@@ -509,7 +540,7 @@ def draw_large_arrow(x1: float, y: float, x2: float) -> str:
         (x1, y + body_h / 2),
     ]
     serialized = " ".join(f"{x:.1f},{yy:.1f}" for x, yy in points)
-    return f'<polygon points="{serialized}" fill="#8ab2ef" opacity="0.95"/>'
+    return f'<polygon points="{serialized}" fill="#b0c4d6" opacity="0.45"/>'
 
 
 def _panel_right(panel: tuple[float, float, float, float]) -> float:
@@ -530,18 +561,24 @@ def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
-def draw_line(x1: float, y1: float, x2: float, y2: float, stroke_width: float = 2.6) -> str:
+def draw_line(x1: float, y1: float, x2: float, y2: float, stroke_width: float = 2.6,
+              dashed: bool = False) -> str:
+    dash = f' stroke-dasharray="{CONNECTOR_DASH}"' if dashed else ""
     return (
         f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-        f'stroke="{CONNECTOR_COLOR}" stroke-width="{stroke_width:.1f}" stroke-linecap="round"/>'
+        f'stroke="{CONNECTOR_COLOR_MAIN}" stroke-width="{stroke_width:.1f}" '
+        f'stroke-linecap="round"{dash}/>'
     )
 
 
-def draw_polyline(points: list[tuple[float, float]], stroke_width: float = 2.6) -> str:
+def draw_polyline(points: list[tuple[float, float]], stroke_width: float = 2.6,
+                  dashed: bool = False) -> str:
     serialized = " ".join(f"{x:.1f},{y:.1f}" for x, y in points)
+    dash = f' stroke-dasharray="{CONNECTOR_DASH}"' if dashed else ""
     return (
         f'<polyline points="{serialized}" fill="none" '
-        f'stroke="{CONNECTOR_COLOR}" stroke-width="{stroke_width:.1f}" stroke-linecap="round" stroke-linejoin="round"/>'
+        f'stroke="{CONNECTOR_COLOR_MAIN}" stroke-width="{stroke_width:.1f}" '
+        f'stroke-linecap="round" stroke-linejoin="round"{dash}/>'
     )
 
 
@@ -557,7 +594,7 @@ def _arrow_head(x1: float, y1: float, x2: float, y2: float, head_len: float = 18
     )
     return (
         f'<polygon points="{x2:.1f},{y2:.1f} {left[0]:.1f},{left[1]:.1f} '
-        f'{right[0]:.1f},{right[1]:.1f}" fill="{CONNECTOR_COLOR}"/>'
+        f'{right[0]:.1f},{right[1]:.1f}" fill="{CONNECTOR_COLOR_MAIN}"/>'
     )
 
 
@@ -568,7 +605,7 @@ def draw_arrow_polyline(points: list[tuple[float, float]], stroke_width: float =
     (x1, y1), (x2, y2) = points[-2], points[-1]
     return (
         f'<polyline points="{serialized}" fill="none" '
-        f'stroke="{CONNECTOR_COLOR}" stroke-width="{stroke_width:.1f}" '
+        f'stroke="{CONNECTOR_COLOR_MAIN}" stroke-width="{stroke_width:.1f}" '
         f'stroke-linecap="round" stroke-linejoin="round"/>'
         + _arrow_head(x1, y1, x2, y2, 16)
     )
@@ -588,7 +625,7 @@ def fit_box(
         min_font_size = max(14, font_size - 2)
     chosen = font_size
     for size in range(font_size, min_font_size - 1, -1):
-        lines = wrap_text(text, w - 36, size)
+        lines = wrap_text(text, w - 28, size)
         if text_height(lines, size) <= h - BODY_TEXT_PAD_Y:
             chosen = size
             break
@@ -600,7 +637,7 @@ def validate_boxes(boxes: list[Box]) -> tuple[list[str], list[str]]:
     issues: list[str] = []
     overlaps: list[str] = []
     for box in boxes:
-        lines = wrap_text(box.text, box.w - 36, box.font_size)
+        lines = wrap_text(box.text, box.w - 28, box.font_size)
         if text_height(lines, box.font_size) > box.h - BODY_TEXT_PAD_Y:
             issues.append(f"text overflow in {box.id}")
     for i in range(len(boxes)):
@@ -1034,7 +1071,7 @@ def check_text_style_consistency(layout: LayoutResult) -> dict[str, Any]:
         "analysis_step_4": layout.boxes["analysis_step_1"].font_size,
     }
     for box_id, box in layout.boxes.items():
-        lines = wrap_text(box.text, box.w - 36, box.font_size)
+        lines = wrap_text(box.text, box.w - 28, box.font_size)
         line_counts[box_id] = len(lines)
         if any(sum(_char_units(ch) for ch in line) > MAX_TEXT_LINE_UNITS for line in lines):
             long_line_nodes.append(box_id)
@@ -1303,7 +1340,7 @@ def plan_layout(ir: DiagramIR, *, relayout: bool = False) -> LayoutResult:
     duplicate_box = fit_box(
         "duplicate_label",
         _node_lookup(ir)["duplicate_label"].text,
-        610 if not relayout else 620,
+        636 if not relayout else 642,
         560 if not relayout else 565,
         330 if not relayout else 338,
         58,
@@ -1313,7 +1350,7 @@ def plan_layout(ir: DiagramIR, *, relayout: bool = False) -> LayoutResult:
     excluded_box = fit_box(
         "excluded_box",
         _node_lookup(ir)["excluded_box"].text,
-        610 if not relayout else 620,
+        636 if not relayout else 642,
         640,
         340 if not relayout else 350,
         280 if not relayout else 300,
@@ -1363,11 +1400,8 @@ def plan_layout(ir: DiagramIR, *, relayout: bool = False) -> LayoutResult:
         fill, stroke = BOX_STYLE_BY_ID.get(box.id, ("#f8fbff", "#5d85d8"))
         box.fill = fill
         box.stroke = stroke
-        box.stroke_width = 2.1
-        if box.id in {"duplicate_label", "citation_box", "analysis_step_1", "analysis_step_2", "analysis_step_3", "analysis_step_4"}:
-            box.rx = 16.0
-        else:
-            box.rx = max(16.0, box_rx)
+        box.stroke_width = STROKE_WIDTH
+        box.rx = CORNER_RADIUS
 
     return LayoutResult(
         width=width,
@@ -1789,41 +1823,48 @@ def render_svg(ir: DiagramIR, layout: LayoutResult) -> str:
 <defs>
   <radialGradient id="bgGlow" cx="20%" cy="15%" r="110%">
     <stop offset="0%" stop-color="#ffffff"/>
-    <stop offset="48%" stop-color="#f8fbff"/>
-    <stop offset="100%" stop-color="#eef4fb"/>
-  </radialGradient>
-  <radialGradient id="cornerGlow" cx="0%" cy="0%" r="90%">
-    <stop offset="0%" stop-color="#dbeafe" stop-opacity="0.55"/>
-    <stop offset="55%" stop-color="#f8fbff" stop-opacity="0.18"/>
-    <stop offset="100%" stop-color="#f8fbff" stop-opacity="0"/>
+    <stop offset="48%" stop-color="#fafbfc"/>
+    <stop offset="100%" stop-color="#f0f2f5"/>
   </radialGradient>
 </defs>
 <rect width="100%" height="100%" fill="url(#bgGlow)"/>
-<circle cx="100" cy="90" r="240" fill="url(#cornerGlow)"/>
 """
 
-    def connector(edge_id: str, points: list[tuple[float, float]], *, stroke_width: float = 2.3) -> str:
+    def connector(edge_id: str, points: list[tuple[float, float]], *, stroke_width: float = 1.8) -> str:
         style = connector_styles.get(edge_id, "arrow")
         if style == "line":
-            return draw_polyline(points, stroke_width=stroke_width) if len(points) > 2 else draw_line(*points[0], *points[1], stroke_width=stroke_width)
-        return draw_arrow_polyline(points, stroke_width=stroke_width)
+            # annotation / branch: thinner, dashed
+            sw = CONNECTOR_WIDTH_BRANCH
+            if len(points) > 2:
+                return draw_polyline(points, stroke_width=sw, dashed=True)
+            return draw_line(*points[0], *points[1], stroke_width=sw, dashed=True)
+        # main flow: thicker, solid
+        sw = CONNECTOR_WIDTH_MAIN
+        return draw_arrow_polyline(points, stroke_width=sw)
+
+    # ---- centre content (title goes below figure, academic convention) ----
+    leftmost = 70.0
+    rightmost = layout.right_panel[0] + layout.right_panel[2]
+    content_w = rightmost - leftmost
+    dx = (layout.width - content_w) / 2.0 - leftmost
+
+    title_lines = wrap_text(ir.title, 760, title_font)
+    title_h = text_height(title_lines, title_font) + 30
+    title_y = layout.left_panel[1] + layout.left_panel[3] + 50
+
+    topmost = 130.0
+    bottommost = title_y + title_h
+    content_h = bottommost - topmost
+    dy = (layout.height - content_h) / 2.0 - topmost
+    open_group = f'<g transform="translate({dx:.1f},{dy:.1f})">'
 
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{layout.width}" height="{layout.height}" '
         f'viewBox="0 0 {layout.width} {layout.height}">',
         bg,
-        draw_multiline_text(
-            layout.width / 2,
-            75,
-            760,
-            ir.title,
-            font_size=title_font,
-            font_weight="700",
-            fill="#1f2e4f",
-            italic=True,
-        ),
+        open_group,
         draw_panel(*layout.left_panel, title=ir.left_caption, font_size=caption_font, rx=panel_rx),
-        draw_panel(*layout.right_panel, rx=panel_rx),
+        draw_panel(*layout.right_panel, rx=panel_rx, opacity=0.55),
         draw_label_pill(*STAGE_PILLS["identification"], ir.stage_labels[0], stage_font, stage_pill_rx),
         draw_label_pill(*STAGE_PILLS["screening"], ir.stage_labels[1], stage_font, stage_pill_rx),
         draw_label_pill(*STAGE_PILLS["included"], ir.stage_labels[2], stage_font, stage_pill_rx),
@@ -1926,10 +1967,21 @@ def render_svg(ir: DiagramIR, layout: LayoutResult) -> str:
                 fill="#233353",
                 italic=True,
             ),
+            # figure caption at bottom
+            draw_multiline_text(
+                layout.width / 2,
+                title_y,
+                760,
+                ir.title,
+                font_size=title_font,
+                font_weight="700",
+                fill="#1f2e4f",
+                italic=True,
+            ),
         ]
     )
 
-    return "".join(parts) + "</svg>\n"
+    return "".join(parts) + "</g>\n</svg>\n"
 
 
 def run_pipeline(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
