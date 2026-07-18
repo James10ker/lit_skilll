@@ -4,6 +4,10 @@ python-docx>=1.1.0
 mammoth>=1.6.0
 python-pptx>=0.6.21
 matplotlib>=3.8.0
+networkx>=3.2.0
 PyMuPDF>=1.24.0
+
+# 本地回归测试
+pytest>=8.0.0
 
 # 外部文献数据库检索通常由 Agent 的联网能力完成；本文件只保留本地格式转换依赖。

@@ -38,8 +38,8 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 - 必须报告可用全文、仅摘要和仅元数据记录的数量及比例。若多数记录没有全文，方法、实验效果和细节性结论只能基于有全文的子集；不得把标题/摘要级综合写成全量全文综述。
 - 默认不做论文图表内容分析，不分析参考图表的颜色、布局、节点位置或视觉细节。
 - 图表默认是“图表合成”：根据本次检索/筛选得到的文献数据，生成与参考综述同类型、同功能的新图表。
-- 参考复现任务默认生成流程图、年度发文量柱状图和双五年 topic 词云；合作数据充分时再生成连接图。普通综述按 RQ 与数据生成必要图表。所有已生成图必须通过各自 report 的几何与数据校验。
-- 双五年 topic 词云以用户指定截止年划分“最近五年”和“此前五年”，两个窗口相邻且不重叠；topic 缺失时先完成透明的人工/模型辅助编码台账，不得编造作者关键词。
+- 参考复现任务默认生成流程图、年度发文量柱状图和双五年 topic 词云；合作数据充分时再生成连接图。普通综述按 RQ 与数据生成必要图表。所有已生成图必须通过各自 report 的几何与数据校验。参考 Figure 7/8 式连接图必须使用力导向 node-link 形式：节点面积表示子集发文量、线宽表示重复合作强度、颜色表示网络社区。
+- 双五年 topic 词云以用户指定截止年划分“最近五年”和“此前五年”，两个窗口相邻且不重叠；topic 缺失时先完成透明的人工/模型辅助编码台账，不得编造作者关键词。默认使用宽幅、高对比、层级清晰的双面板 thematic landscape；字体大小只表示各自窗口内的频次，图注必须披露窗口样本量与计数口径。
 - 主题统计前必须把代码、缩写和自然语言标签映射到唯一规范标签；同一主题不得以 `APPLICATION` 和 `AI Applications in Education` 等多个名称重复计数。
 - “最近五年”只能截止到最新完整年份。当前年或明确不完整年份可出现在年度趋势图中，但不得进入完整五年窗口，也不得支撑跨窗口百分比结论。
 - 合作网络只能使用真实的国家、机构或作者共著字段。所需字段缺失或覆盖不足时跳过该图并披露限制，不得用 author/topic/journal/year 混合共现网络冒充合作网络。
@@ -61,7 +61,7 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 | Office 输入转换 | Word/PPT 作为输入时使用仓库已有转换工具；这不改变最终 LaTeX 交付格式 |
 | 图表合成 | 先读 `prompts/figure_table_handling.md`；所有图必须由本次记录生成并输出验证 report |
 | 年度图与双五年词云 | `python3 tools/render_temporal_topic_figures.py --input {records.json} --output-dir {figures_dir} --prefix {topic} --start-year {start} --end-year {end} --report {report.json}` |
-| 连接图 | `python3 tools/render_bibliometric_network.py --input {records.json} --output {figure.svg} --report {report.json}` |
+| 合作连接图 | `python3 tools/render_collaboration_networks.py --input {records.json} --output-dir {figures_dir} --dimensions countries,institutions --report {report.json}`；作者共著改用 `--dimensions authors` |
 | 流程图 | `python3 tools/render_review_figure1.py --spec {spec.json} --output {figure.svg} --report {report.json}` |
 | LaTeX 静态门禁 | `python3 tools/validate_latex_review.py --input {review.tex} --report {quality.json} --language english --evidence-ledger {ledger.json} --required-rqs {RQ1,...} --figure-report {figure.report.json} --min-words 3000 --min-figures {approved_count}` |
 | 人工学术风格重写 | 读 `prompts/human_academic_rewrite.md`；去除模板化结构和机械表达，保留证据链，不新增未核验内容 |
@@ -93,7 +93,7 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 3. `Read prompts/research_question_analyzer.md`，形成研究问题、分析维度和初步分类。
 4. `Read prompts/literature_search.md`，补充检索并筛选文献；记录纳入/排除理由，并建立逐条关键结论到引用 key 的 `evidence_ledger.json`。
 5. `Read prompts/reference_review_synthesis.md`。若用户只给主题，自动生成主题对应 RQ、检索来源和图表计划；若用户要求按参考综述或计划书合成，则对齐参考综述的数据来源、RQ 和图表类型。不要把系统评测中的“多综述对比”误写成每篇正文必备章节。
-6. `Read prompts/figure_table_handling.md`，根据本次文献统计数据合成图表。参考复现任务默认生成流程图、年度柱状图和双五年 topic 词云；合作字段充分时才生成连接图。每张已生成图的 report 必须通过；普通综述按 RQ 生成。
+6. `Read prompts/figure_table_handling.md`，根据本次文献统计数据合成图表。参考复现任务默认生成流程图、年度柱状图和双五年 topic 词云；合作字段充分时才用 `render_collaboration_networks.py` 生成真实作者/国家/机构合作图。不得调用异构 author/topic/journal/year 图冒充参考 Figure 7/8。每张已生成图的 report 必须通过；普通综述按 RQ 生成。
 7. `Read prompts/outline_preview.md`，仅在需要用户确认范围或用户明确要求“先给提纲/检索策略”时输出预览；不要把预览命名为研究计划。
 8. `Read prompts/review_builder.md` 与 `prompts/style_reference.md`，撰写正文并按要求落盘；当用户说“写综述/生成综述/撰写研究现状/related work”时，必须进入本步，而不是只交付计划。
 9. `Read prompts/review_self_check.md`，内部自检后修订；不要把自检清单写进正文。
@@ -123,7 +123,7 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 □ 双五年窗口相邻且不重叠；topic 来源和逐篇编码可追溯
 □ 最近五年截止于最新完整年份；不完整年份未进入窗口比较
 □ topic 代码、缩写和展示标签已归一化，同一概念未重复计数
-□ 合作网络有真实合作字段支撑；数据不足时已跳过而非生成替代性混合网络
+□ 合作网络有真实合作字段支撑，采用论文式 node-link 语义（节点面积=子集发文量、线宽=合作强度、颜色=社区）；数据不足时已跳过而非生成替代性混合网络
 □ 若 WoS、Scopus、ERIC 等来源不可访问，已明确标注访问限制和近似复现来源
 □ 综述不是论文摘要堆叠，而是按问题、方法、证据和争议综合
 □ 已说明检索范围、筛选标准和残余不确定性

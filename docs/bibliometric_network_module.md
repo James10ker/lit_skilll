@@ -1,235 +1,123 @@
-# Bibliometric Network Module
+# Collaboration Network Module
 
-本文说明新增的异构文献计量连接图模块，用于生成类似参考综述 Figure 7/8 的白底彩色网络图。模块不会抽取或复制参考论文原图，而是使用本次爬取或筛选得到的论文元数据重新合成同类型连接图。
+本模块用于按参考综述 *Two Decades of Artificial Intelligence in Education* 的 Figure 7/8 形式生成真实合作网络。它不复制参考图，而是从本次论文记录中的作者、机构或国家字段重新统计合作边。
 
-## 1. 模块文件
-
-```text
-tools/render_bibliometric_network.py
-```
-
-示例输入：
+## 正确工具
 
 ```text
-tools/examples/aied_bibliometric_network_records.json
+tools/render_collaboration_networks.py
 ```
 
-示例输出：
+旧工具 `tools/render_bibliometric_network.py` 生成 author/topic/journal/year/affiliation 异构证据图，只能明确称为 **bibliographic evidence map**。它不是 scientific collaboration network，不得用于复现 Figure 7/8。
 
-```text
-outputs/figures/aied_bibliometric_network.svg
-outputs/figures/aied_bibliometric_network.png
-outputs/figures/aied_bibliometric_network.report.json
-```
+## 数据语义
 
-## 2. 数据字段
-
-模块支持 JSON 或 CSV。推荐 JSON 结构：
+支持 JSON/CSV；JSON 可以是记录数组或 `{ "records": [...] }`。常用字段：
 
 ```json
 {
-  "records": [
-    {
-      "title": "Paper title",
-      "authors": ["Author A", "Author B"],
-      "journal": "Journal name",
-      "year": 2024,
-      "topics": ["Topic one", "Topic two"],
-      "affiliations": ["Institution A", "Institution B"],
-      "citations": 123
-    }
-  ]
+  "title": "Paper title",
+  "authors": ["Author A", "Author B"],
+  "institutions": ["Institution A", "Institution B"],
+  "countries": ["US", "CA"]
 }
 ```
 
-CSV 字段同名即可。多值字段可以用 `;`、`|` 或换行分隔，例如：
+兼容字段：
 
-```text
-authors: Author A; Author B
-topics: Intelligent tutoring systems; Adaptive learning
-affiliations: University A; University B
-```
+- 作者：`authors` / `author` / OpenAlex `authorships[].author.display_name`
+- 机构：`institutions` / `affiliations` / `author_units` / OpenAlex `authorships[].institutions[].display_name`
+- 国家：`countries` / `country` / `country_codes` / OpenAlex authorship country fields
 
-兼容别名：
+边只来自同一篇论文中同维度实体的真实共现：
 
-```text
-title / paper_title
-authors / author
-journal / source / publication_source
-year / publication_year
-topics / keywords / theme
-affiliations / institutions / author_units
-citations / citation_count / cited_by
-```
+- `authors`：作者共著边
+- `institutions`：跨机构共同署名边
+- `countries`：跨国家/地区共同署名边
 
-## 3. 图形编码
+禁止生成 author--topic、author--journal、topic--year 等混合边并称为合作网络。
 
-节点类型：
+## 参考论文式视觉编码
 
-```text
-author       作者
-journal      期刊或来源
-year         年份
-topic        主题或关键词
-affiliation  作者单位
-```
+- 节点面积：当前字段覆盖子集中的发文量
+- 边宽：共同署名论文次数
+- 节点颜色：基于加权网络检测的合作社区
+- 布局：确定性 force-directed node-link layout
+- 筛选：按发文量、加权度、度数选择 top-N；诱导子图中的孤立候选可以省略，但不得新增边
 
-视觉编码：
+每张图同时输出 SVG 与 PNG。图内徽标和正文图注必须披露字段覆盖范围；例如只有扩充论文有 affiliation 时，应写明 `49 / 199 included records`，不能暗示全语料分析。
 
-```text
-节点颜色 -> 节点类型
-节点大小 -> 该节点关联论文的引用量总和
-边宽     -> 两个节点共现论文的引用量总和
-边透明度 -> 共现次数
-```
+## 命令
 
-边的生成规则：
-
-```text
-author-author          同一篇论文中的共同作者
-author-affiliation     作者与单位在同一篇论文中共现
-author-journal         作者发表于某来源
-author-topic           作者涉及某主题
-author-year            作者活跃年份
-journal-year           来源年份
-topic-year             主题年份
-affiliation-topic      单位与主题共现
-```
-
-## 4. 使用命令
-
-生成 SVG 和 report：
+同时生成参考论文对应的国家/地区和机构网络：
 
 ```bash
-mkdir -p outputs/figures
-
-python3 tools/render_bibliometric_network.py \
-  --input tools/examples/aied_bibliometric_network_records.json \
-  --output outputs/figures/aied_bibliometric_network.svg \
-  --report outputs/figures/aied_bibliometric_network.report.json \
-  --title "Figure X. Bibliometric connection network"
+python3 tools/render_collaboration_networks.py \
+  --input included_records.json \
+  --output-dir outputs/figures \
+  --dimensions countries,institutions \
+  --top-n 30 \
+  --max-labels 20 \
+  --min-coverage 0.20 \
+  --min-multi-party-records 3 \
+  --report outputs/reports/collaboration_networks.report.json
 ```
 
-转 PNG：
+作者共著网络：
 
 ```bash
-rsvg-convert \
-  -o outputs/figures/aied_bibliometric_network.png \
-  outputs/figures/aied_bibliometric_network.svg
+python3 tools/render_collaboration_networks.py \
+  --input included_records.json \
+  --output-dir outputs/figures \
+  --dimensions authors \
+  --report outputs/reports/author_collaboration.report.json
 ```
 
-只验证输入是否能生成图：
-
-```bash
-python3 tools/render_bibliometric_network.py \
-  --input tools/examples/aied_bibliometric_network_records.json \
-  --validate-only \
-  --report outputs/figures/aied_bibliometric_network.report.json
-```
-
-查看内置示例数据：
-
-```bash
-python3 tools/render_bibliometric_network.py --dump-sample
-```
-
-## 5. 常用参数
+默认输出：
 
 ```text
---max-nodes-per-type  每类节点最多保留多少个，默认 24
---min-node-citations  过滤低引用节点，默认 0
---max-labels          兼容旧调用；保留节点都会显示标签，避免无名节点
---seed                固定布局随机种子，默认 20260710
---width               SVG 宽度，默认 1600
---height              SVG 高度，默认 1120
+country_collaboration_network.svg/png
+institution_collaboration_network.svg/png
+author_collaboration_network.svg/png
 ```
 
-示例：只显示每类前 15 个高引用节点：
+## 数据门禁
 
-```bash
-python3 tools/render_bibliometric_network.py \
-  --input scraped_records.json \
-  --output outputs/figures/network.svg \
-  --report outputs/figures/network.report.json \
-  --max-nodes-per-type 15 \
-  --min-node-citations 20 \
-  --max-labels 36
-```
+默认要求每个请求维度：
 
-## 6. Report 检查
+- 字段覆盖率至少 20%；
+- 至少 3 篇论文具有两个或以上同维度实体；
+- 至少存在一条真实合作边；
+- top-N 诱导图仍包含合作边；
+- 节点、标签无重叠，标签不越界。
 
-report 会输出：
+不足时不生成替代图，report 的 `skipped` 会记录原因并令 `validation.passed=false`。可以根据研究设计调整覆盖率阈值，但必须在方法、图注和局限性中披露。
+
+## Report 契约
+
+关键字段：
 
 ```text
 input_records
-node_count
-edge_count
-nodes_by_type
-top_nodes
-warnings
-overlap_checks
+requested_dimensions
+semantic_contract
+networks.{dimension}.input_stats
+networks.{dimension}.selection
+networks.{dimension}.layout_checks
+skipped
 validation
-style_contract
 ```
 
 最小通过条件：
 
-```text
-validation.passed = true
-validation.has_author_nodes = true
-validation.has_topic_nodes = true
-validation.has_affiliation_nodes = true
-validation.overlap_checks_passed = true
-```
-
-`overlap_checks` 会检查生成后的几何结果：
-
-```text
-node_overlaps         节点圆之间是否互相压住
-label_overlaps        文字标签之间是否重叠
-label_bounds_issues   文字是否越出画布
-label_node_overlaps   文字是否压到其他节点
-```
-
-所有保留节点都会将多行标签置于节点内，并按标签尺寸扩展节点。缺失、空白或 `Unknown`、`N/A` 等占位元数据不会生成节点。CLI 在 `validation.passed = false` 时返回非零退出码。
-
-快速检查：
-
-```bash
-python3 - <<'PY'
-import json
-from pathlib import Path
-
-report = json.loads(Path("outputs/figures/aied_bibliometric_network.report.json").read_text())
-print(json.dumps(report["validation"], ensure_ascii=False, indent=2))
-print(json.dumps(report["nodes_by_type"], ensure_ascii=False, indent=2))
-
+```python
+assert report["validation"]["true_collaboration_edges_only"]
+assert report["validation"]["no_inferred_entities_or_edges"]
+assert report["validation"]["all_requested_dimensions_rendered"]
+assert report["validation"]["all_layout_checks_passed"]
 assert report["validation"]["passed"]
-assert report["validation"]["has_author_nodes"]
-assert report["validation"]["has_topic_nodes"]
-assert report["validation"]["has_affiliation_nodes"]
-assert report["validation"]["overlap_checks_passed"]
-PY
 ```
 
-## 7. 在 CC 中调用
+## 正文写法
 
-在 Claude Code 中可以这样描述任务：
-
-```text
-请使用 tools/render_bibliometric_network.py，把我爬取的 scraped_records.json 渲染成类似 Two Decades of Artificial Intelligence in Education 里 Figure 7/8 那种 bibliometric connection network。
-
-要求：
-1. authors、journal、year、topics、affiliations 都作为节点；
-2. citations 作为节点大小和边宽的权重属性；
-3. 输出 SVG、PNG 和 report；
-4. report 里 validation 必须通过；
-5. 如果字段缺失，只在 warnings 里说明，不要编造数据。
-```
-
-## 8. 注意事项
-
-- 本模块适合几十到几百个聚合节点。数据量很大时，先用 `--max-nodes-per-type` 控制密度。
-- 引用量为缺失或非数字时按 `0` 处理。
-- 如果没有真实引用量，可以生成演示图，但必须在正文或图注中说明是示例数据。
-- 如果需要国家/地区 collaboration network，可以把国家/地区放入 `affiliations` 或扩展一个新的 `country` 节点类型。
+图注至少说明：字段覆盖记录数、原始或可见节点数、边数、top-N 规则、节点面积/线宽/颜色语义，以及结果不代表全领域的限制。若所有 affiliation 数据都来自扩充子集，应在 RQ 结果和 Limitations 中重复该边界。
