@@ -22,7 +22,7 @@ from xml.sax.saxutils import escape
 
 BAR_COLOR = "#b2221b"
 TREND_COLOR = "#9a6a19"
-TOPIC_COLORS = ("#66d7e8", "#9ee6c6", "#8da9ff", "#f4c66a", "#b48cff", "#ffaf72", "#ff88ae")
+TOPIC_COLORS = ("#1f4e79", "#2f6f8f", "#3f7d68", "#8a5a44", "#6a5d8f", "#486581", "#7a6b3a")
 PLACEHOLDERS = {"", "-", "--", "n/a", "na", "none", "null", "unknown", "unknown topic"}
 
 
@@ -267,7 +267,7 @@ def place_words(
     center_x, center_y = panel_x + panel_w / 2, panel_y + panel_h / 2
     for rank, (text, count) in enumerate(ranked):
         ratio = 1.0 if high == low else (math.sqrt(count) - math.sqrt(low)) / (math.sqrt(high) - math.sqrt(low))
-        preferred_font_size = 18.0 + ratio * 34.0
+        preferred_font_size = 17.0 + ratio * 38.0
         display = text if len(text) <= 34 else text[:31].rstrip() + "..."
         placed: WordBox | None = None
         for scale_factor in (1.0, 0.9, 0.8, 0.7, 0.6):
@@ -327,8 +327,8 @@ def render_wordcloud_svg(
     recent_window: tuple[int, int],
     title: str,
     max_topics: int,
-    width: int = 1600,
-    height: int = 900,
+    width: int = 2000,
+    height: int = 1100,
 ) -> tuple[str, dict[str, Any]]:
     margin, gap, top, bottom = 42.0, 30.0, 166.0, 54.0
     panel_w = (width - 2 * margin - gap) / 2
@@ -344,36 +344,29 @@ def render_wordcloud_svg(
     )
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
-        '<defs>',
-        '<linearGradient id="pageGradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#061426"/><stop offset="0.55" stop-color="#0b1c32"/><stop offset="1" stop-color="#171a38"/></linearGradient>',
-        '<radialGradient id="earlyPanel" cx="15%" cy="10%" r="110%"><stop offset="0" stop-color="#173b52"/><stop offset="1" stop-color="#0a1d31"/></radialGradient>',
-        '<radialGradient id="recentPanel" cx="85%" cy="10%" r="110%"><stop offset="0" stop-color="#2a2551"/><stop offset="1" stop-color="#0d1d31"/></radialGradient>',
-        '</defs>',
-        '<rect width="100%" height="100%" fill="url(#pageGradient)"/>',
-        '<path d="M0 132 C340 48 610 196 940 104 S1350 68 1600 128" fill="none" stroke="#75a7c9" stroke-opacity="0.12"/>',
-        '<text x="48" y="48" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" letter-spacing="4" fill="#6fd9e9">THEMATIC LANDSCAPE</text>',
-        f'<text x="48" y="94" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" fill="#f4f8fc">{escape(title)}</text>',
-        '<text x="48" y="126" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#9db2c7">Two adjacent five-year windows · type size reflects within-window topic frequency</text>',
+        '<rect width="100%" height="100%" fill="#ffffff"/>',
+        '<text x="48" y="48" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700" letter-spacing="3" fill="#47718f">THEMATIC LANDSCAPE</text>',
+        f'<text x="48" y="94" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" fill="#16283d">{escape(title)}</text>',
+        '<text x="48" y="126" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#65758b">Two adjacent five-year windows · type size reflects within-window topic frequency</text>',
     ]
     for panel_index, (x, window, boxes, counts, gradient, accent) in enumerate((
-        (margin, earlier_window, earlier_boxes, earlier_counts, "earlyPanel", "#61d6e6"),
-        (recent_x, recent_window, recent_boxes, recent_counts, "recentPanel", "#b68cff"),
+        (margin, earlier_window, earlier_boxes, earlier_counts, "#f7f9fc", "#2f6f8f"),
+        (recent_x, recent_window, recent_boxes, recent_counts, "#f8faf7", "#3f7d68"),
     )):
-        parts.append(f'<rect x="{x:.2f}" y="{top:.2f}" width="{panel_w:.2f}" height="{panel_h:.2f}" rx="28" fill="url(#{gradient})" stroke="#46617b" stroke-opacity="0.62"/>')
+        parts.append(f'<rect x="{x:.2f}" y="{top:.2f}" width="{panel_w:.2f}" height="{panel_h:.2f}" rx="20" fill="{gradient}" stroke="#cbd5df" stroke-width="1.5"/>')
         parts.append(f'<rect x="{x + 24:.2f}" y="{top + 28:.2f}" width="6" height="54" rx="3" fill="{accent}"/>')
-        parts.append(f'<text x="{x + 46:.2f}" y="{top + 57:.2f}" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="#f5f8fc">{window[0]}-{window[1]}</text>')
-        parts.append(f'<text x="{x + 47:.2f}" y="{top + 81:.2f}" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" letter-spacing="2" fill="#8da5bc">FIVE-YEAR TOPIC WINDOW</text>')
-        parts.append(f'<text x="{x + panel_w - 28:.2f}" y="{top + 55:.2f}" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#f5f8fc">{sum(counts.values())}</text>')
-        parts.append(f'<text x="{x + panel_w - 28:.2f}" y="{top + 79:.2f}" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" letter-spacing="1.5" fill="#8da5bc">TOPIC ASSIGNMENTS</text>')
-        parts.append(f'<text x="{x + panel_w - 25:.2f}" y="{top + panel_h * 0.48:.2f}" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="164" font-weight="700" fill="#ffffff" opacity="0.03">{str(window[0])[2:]}–{str(window[1])[2:]}</text>')
-        parts.append(f'<line x1="{x + 45:.2f}" y1="{top + 96:.2f}" x2="{x + panel_w - 28:.2f}" y2="{top + 96:.2f}" stroke="#89a7c2" stroke-opacity="0.28"/>')
+        parts.append(f'<text x="{x + 46:.2f}" y="{top + 57:.2f}" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="#1c334a">{window[0]}-{window[1]}</text>')
+        parts.append(f'<text x="{x + 47:.2f}" y="{top + 81:.2f}" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" letter-spacing="2" fill="#718096">FIVE-YEAR TOPIC WINDOW</text>')
+        parts.append(f'<text x="{x + panel_w - 28:.2f}" y="{top + 55:.2f}" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#1c334a">{sum(counts.values())}</text>')
+        parts.append(f'<text x="{x + panel_w - 28:.2f}" y="{top + 79:.2f}" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" letter-spacing="1.5" fill="#718096">TOPIC ASSIGNMENTS</text>')
+        parts.append(f'<line x1="{x + 45:.2f}" y1="{top + 96:.2f}" x2="{x + panel_w - 28:.2f}" y2="{top + 96:.2f}" stroke="#cbd5df"/>')
         for box in boxes:
             parts.append(
                 f'<text x="{box.x:.2f}" y="{box.y + box.font_size * 0.34:.2f}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="{box.font_size:.1f}" font-weight="700" fill="{box.color}">{escape(box.text)}</text>'
             )
         parts.append(f'<circle cx="{x + 48:.2f}" cy="{top + panel_h - 24:.2f}" r="3.5" fill="{accent}"/>')
-        parts.append(f'<text x="{x + 62:.2f}" y="{top + panel_h - 19:.2f}" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" letter-spacing="1" fill="#7f98b0">TYPE SIZE = WITHIN-WINDOW FREQUENCY</text>')
-        parts.append(f'<text x="{x + panel_w - 28:.2f}" y="{top + panel_h - 19:.2f}" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" letter-spacing="1" fill="#7f98b0">TOPIC LABELS ONLY</text>')
+        parts.append(f'<text x="{x + 62:.2f}" y="{top + panel_h - 19:.2f}" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" letter-spacing="1" fill="#68788a">TYPE SIZE = WITHIN-WINDOW FREQUENCY</text>')
+        parts.append(f'<text x="{x + panel_w - 28:.2f}" y="{top + panel_h - 19:.2f}" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" letter-spacing="1" fill="#68788a">TOPIC LABELS ONLY</text>')
     parts.append("</svg>\n")
     checks = {
         "earlier_topic_labels": len(earlier_boxes),
@@ -458,7 +451,7 @@ def run_pipeline(
         "validation": validation,
         "style_contract": {
             "annual_chart": "white background, dark-red bars, brown-gold polynomial trend, serif typography",
-            "topic_wordcloud": "wide dark thematic landscape with two adjacent non-overlapping five-year panels and high-contrast hierarchy",
+            "topic_wordcloud": "large, simple white two-panel layout with adjacent non-overlapping five-year windows and expanded label capacity",
         },
     }
     return {"annual_publications": annual_svg, "topic_wordcloud": wordcloud_svg}, report
@@ -487,7 +480,7 @@ def main() -> int:
     parser.add_argument("--start-year", type=int)
     parser.add_argument("--end-year", type=int)
     parser.add_argument("--window-years", type=int, default=5)
-    parser.add_argument("--max-topics", type=int, default=28)
+    parser.add_argument("--max-topics", type=int, default=36)
     parser.add_argument("--annual-title", default="Figure X. Year-by-year number of publications")
     parser.add_argument("--topic-title", default="Figure X. Research topics across two five-year periods")
     parser.add_argument("--report", type=Path)

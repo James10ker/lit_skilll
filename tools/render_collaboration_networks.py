@@ -40,6 +40,10 @@ DIMENSION_ALIASES = {
 }
 SINGULAR = {"authors": "author", "institutions": "institution", "countries": "country"}
 PALETTE = ("#13A8C7", "#7C4DCE", "#20A875", "#E98245", "#D94B73", "#4477C4", "#9C7A2A", "#65758B")
+MIN_MARKER_AREA = {"authors": 450.0, "institutions": 520.0, "countries": 380.0}
+MAX_MARKER_AREA = {"authors": 2300.0, "institutions": 2400.0, "countries": 2200.0}
+MIN_LABEL_FONT = {"authors": 14.0, "institutions": 14.0, "countries": 14.0}
+PUBLICATION_WIDTH_IN = 6.6
 PLACEHOLDERS = {"", "-", "--", "n/a", "na", "none", "null", "unknown", "unknown institution", "unknown country"}
 COUNTRY_NAMES = {
     "AU": "Australia", "BD": "Bangladesh", "BR": "Brazil", "CA": "Canada", "CH": "Switzerland",
@@ -194,13 +198,15 @@ def spring_positions(graph: nx.Graph, seed: int) -> dict[str, np.ndarray]:
     return positions
 
 
-def marker_sizes(graph: nx.Graph) -> dict[str, float]:
+def marker_sizes(graph: nx.Graph, dimension: str) -> dict[str, float]:
     values = [graph.nodes[node]["publications"] for node in graph]
     low, high = min(values), max(values)
+    minimum = MIN_MARKER_AREA[dimension]
+    maximum = MAX_MARKER_AREA[dimension]
     sizes = {}
     for node in graph:
         ratio = 0.0 if high == low else (graph.nodes[node]["publications"] - low) / (high - low)
-        sizes[node] = 125 + 1550 * math.pow(ratio, 0.78)
+        sizes[node] = minimum + (maximum - minimum) * math.pow(ratio, 0.78)
     return sizes
 
 
@@ -285,7 +291,7 @@ def _repel_labels(fig, ax, texts, iterations: int = 220) -> int:
     return used
 
 
-def layout_checks(fig, ax, graph: nx.Graph, positions, sizes, texts, labels) -> dict[str, Any]:
+def layout_checks(fig, ax, graph: nx.Graph, positions, sizes, texts, labels, dimension: str) -> dict[str, Any]:
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
     axes_box = ax.get_window_extent(renderer)
@@ -296,19 +302,63 @@ def layout_checks(fig, ax, graph: nx.Graph, positions, sizes, texts, labels) -> 
     centers = {node: ax.transData.transform(positions[node]) for node in nodes}
     radii = {node: math.sqrt(sizes[node] / math.pi) * fig.dpi / 72.0 for node in nodes}
     node_overlaps = [[source, target] for i, source in enumerate(nodes) for target in nodes[i + 1 :] if np.linalg.norm(centers[source] - centers[target]) + 1.5 < radii[source] + radii[target]]
+    labels_covering_own_node = [
+        node
+        for node, box in zip(labels, boxes)
+        if box.x0 <= centers[node][0] <= box.x1 and box.y0 <= centers[node][1] <= box.y1
+    ]
+    marker_diameters = {
+        node: 2.0 * math.sqrt(sizes[node] / math.pi) * fig.dpi / 72.0
+        for node in graph
+    }
+    label_fonts = [float(text.get_fontsize()) for text in texts]
+    publication_scale = PUBLICATION_WIDTH_IN / float(fig.get_figwidth())
+    effective_marker_diameters = {
+        node: diameter * publication_scale * 150.0 / fig.dpi
+        for node, diameter in marker_diameters.items()
+    }
+    min_marker_area = min(sizes.values(), default=0.0)
+    min_marker_diameter = min(marker_diameters.values(), default=0.0)
+    min_label_font = min(label_fonts, default=0.0)
+    readability = {
+        "minimum_marker_area_pt2": round(min_marker_area, 2),
+        "required_marker_area_pt2": MIN_MARKER_AREA[dimension],
+        "minimum_marker_diameter_native_px": round(min_marker_diameter, 2),
+        "required_marker_diameter_native_px": 45.0,
+        "minimum_label_font_pt": round(min_label_font, 2),
+        "required_label_font_pt": MIN_LABEL_FONT[dimension],
+        "assumed_publication_width_in": PUBLICATION_WIDTH_IN,
+        "effective_minimum_marker_diameter_at_150dpi_px": round(min(effective_marker_diameters.values(), default=0.0), 2),
+        "required_effective_marker_diameter_at_150dpi_px": 18.0,
+        "effective_minimum_label_font_pt": round(min_label_font * publication_scale, 2),
+        "required_effective_label_font_pt": 6.0,
+        "marker_size_passed": min_marker_area >= MIN_MARKER_AREA[dimension] and min_marker_diameter >= 45.0 and min(effective_marker_diameters.values(), default=0.0) >= 18.0,
+        "label_font_passed": bool(label_fonts) and min_label_font >= MIN_LABEL_FONT[dimension] and min_label_font * publication_scale >= 6.0,
+    }
+    readability["passed"] = readability["marker_size_passed"] and readability["label_font_passed"]
     return {
-        "passed": not label_overlaps and not out_of_bounds and not node_overlaps,
+        "passed": not label_overlaps and not out_of_bounds and not node_overlaps and not labels_covering_own_node and readability["passed"],
         "label_overlaps": label_overlaps,
         "out_of_bounds_labels": out_of_bounds,
         "node_overlaps": node_overlaps,
+        "labels_covering_own_node": labels_covering_own_node,
         "unnamed_nodes": [node for node in graph if not node.strip()],
+        "readability_contract": readability,
     }
 
 
-def draw_network(graph: nx.Graph, dimension: str, output_dir: Path, seed: int, max_labels: int) -> dict[str, Any]:
+def draw_network(
+    graph: nx.Graph,
+    dimension: str,
+    output_dir: Path,
+    seed: int,
+    max_labels: int,
+    input_stats: dict[str, Any],
+    total_records: int,
+) -> dict[str, Any]:
     community = community_map(graph)
     positions = spring_positions(graph, seed)
-    sizes = marker_sizes(graph)
+    sizes = marker_sizes(graph, dimension)
     labels = rank_nodes(graph)[:max_labels]
     plt.rcParams.update({"font.family": "DejaVu Serif", "svg.fonttype": "none"})
     fig = plt.figure(figsize=(15.2, 10.4), dpi=160, facecolor="#FBFCFE")
@@ -335,13 +385,16 @@ def draw_network(graph: nx.Graph, dimension: str, output_dir: Path, seed: int, m
         shown = COUNTRY_NAMES.get(node.upper(), node) if dimension == "countries" else node
         shown = "\n".join(textwrap.wrap(shown, width=30, break_long_words=False, break_on_hyphens=False))
         point = np.array(positions[node], dtype=float, copy=True)
-        if dimension != "countries":
-            norm = float(np.linalg.norm(point))
-            direction = point / norm if norm >= 0.14 else np.asarray([math.cos(index * 2.399963), math.sin(index * 2.399963)])
-            point += direction * 0.09
+        norm = float(np.linalg.norm(point))
+        direction = point / norm if norm >= 0.14 else np.asarray([math.cos(index * 2.399963), math.sin(index * 2.399963)])
+        offset = 0.16 if dimension == "countries" else 0.32
+        proposed = point + direction * offset
+        if abs(proposed[0]) > 1.08 or abs(proposed[1]) > 0.92:
+            direction = -direction
+        point += direction * offset
         texts.append(ax.text(
             point[0], point[1], shown, ha="center", va="center",
-            fontsize=7.4 + 0.75 * math.sqrt(graph.nodes[node]["publications"]), fontweight="semibold",
+            fontsize=max(MIN_LABEL_FONT[dimension], 7.4 + 0.75 * math.sqrt(graph.nodes[node]["publications"])), fontweight="semibold",
             color="#172033", linespacing=0.92,
             bbox={"boxstyle": "round,pad=0.14", "facecolor": "white", "edgecolor": "none", "alpha": 0.68}, zorder=5,
         ))
@@ -354,12 +407,12 @@ def draw_network(graph: nx.Graph, dimension: str, output_dir: Path, seed: int, m
 
     singular = SINGULAR[dimension]
     title = "COUNTRY / REGION COLLABORATION NETWORK" if dimension == "countries" else f"{singular.upper()} COLLABORATION NETWORK"
-    fig.text(0.05, 0.955, title, fontsize=21.5, fontweight="bold", color="#10213B", ha="left", va="top")
+    fig.text(0.05, 0.955, title, fontsize=19.0 if dimension == "countries" else 21.5, fontweight="bold", color="#10213B", ha="left", va="top")
     fig.text(0.05, 0.917, "Observed co-occurrence ties only; isolated ranked candidates are omitted.", fontsize=10.5, color="#536274", ha="left", va="top")
-    fig.text(0.95, 0.947, f"{graph.number_of_nodes()} CONNECTED NODES  ·  {graph.number_of_edges()} EDGES", fontsize=9.2, fontweight="bold", color="#31516F", ha="right", va="top", bbox={"boxstyle": "round,pad=0.35", "facecolor": "#EAF2F8", "edgecolor": "#C7D7E5"})
+    fig.text(0.95, 0.947, f"{graph.number_of_nodes()} NODES  ·  {graph.number_of_edges()} EDGES  ·  METADATA {input_stats['records_with_field']}/{total_records}", fontsize=9.2, fontweight="bold", color="#31516F", ha="right", va="top", bbox={"boxstyle": "round,pad=0.35", "facecolor": "#EAF2F8", "edgecolor": "#C7D7E5"})
     fig.text(0.05, 0.045, "NODE AREA  publication count     ·     LINE WIDTH  collaboration frequency     ·     COLOR  detected collaboration community", fontsize=9.3, color="#4E5B6B", ha="left", va="bottom")
 
-    checks = layout_checks(fig, ax, graph, positions, sizes, texts, labels)
+    checks = layout_checks(fig, ax, graph, positions, sizes, texts, labels, dimension)
     checks["node_separation_iterations"] = separation_iterations
     checks["label_repel_iterations"] = repel_iterations
     stem = f"{singular}_collaboration_network"
@@ -400,7 +453,7 @@ def run_pipeline(
         networks[dimension] = {
             "input_stats": input_stats,
             "selection": {"top_n_candidates": min(top_n, full_graph.number_of_nodes()), "isolated_candidates_omitted": isolated},
-            **draw_network(selected, dimension, output_dir, seed + offset * 101, max_labels),
+            **draw_network(selected, dimension, output_dir, seed + offset * 101, max_labels, input_stats, len(records)),
         }
     passed = bool(networks) and not skipped and all(item["layout_checks"]["passed"] for item in networks.values())
     return {
@@ -414,6 +467,8 @@ def run_pipeline(
             "no_inferred_entities_or_edges": True,
             "all_requested_dimensions_rendered": not skipped,
             "all_layout_checks_passed": bool(networks) and all(item["layout_checks"]["passed"] for item in networks.values()),
+            "all_minimum_node_sizes_passed": bool(networks) and all(item["layout_checks"]["readability_contract"]["marker_size_passed"] for item in networks.values()),
+            "all_minimum_label_fonts_passed": bool(networks) and all(item["layout_checks"]["readability_contract"]["label_font_passed"] for item in networks.values()),
             "passed": passed,
         },
     }

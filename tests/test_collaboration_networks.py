@@ -45,6 +45,9 @@ def test_pipeline_renders_reference_style_country_and_institution_networks(tmp_p
     assert set(report["networks"]) == {"countries", "institutions"}
     assert report["networks"]["countries"]["layout_checks"]["passed"] is True
     assert report["networks"]["institutions"]["layout_checks"]["passed"] is True
+    assert report["validation"]["all_minimum_node_sizes_passed"] is True
+    assert report["validation"]["all_minimum_label_fonts_passed"] is True
+    assert report["networks"]["institutions"]["layout_checks"]["readability_contract"]["minimum_marker_diameter_native_px"] >= 45
     assert (tmp_path / "country_collaboration_network.svg").exists()
     assert (tmp_path / "institution_collaboration_network.png").exists()
     json.dumps(report, ensure_ascii=False)

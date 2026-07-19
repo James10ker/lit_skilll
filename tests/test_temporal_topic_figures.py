@@ -29,7 +29,9 @@ def test_temporal_topic_pipeline_renders_two_valid_figures() -> None:
     assert figures["topic_wordcloud"].startswith("<svg")
     assert "2015-2019" in figures["topic_wordcloud"]
     assert "2020-2024" in figures["topic_wordcloud"]
-    assert "pageGradient" in figures["topic_wordcloud"]
+    assert 'fill="#ffffff"' in figures["topic_wordcloud"]
+    assert 'width="2000" height="1100"' in figures["topic_wordcloud"]
+    assert "large, simple white two-panel" in report["style_contract"]["topic_wordcloud"]
     assert "TYPE SIZE = WITHIN-WINDOW FREQUENCY" in figures["topic_wordcloud"]
     assert report["validation"]["passed"] is True
     assert report["wordcloud_checks"]["word_overlaps"] == []

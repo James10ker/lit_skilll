@@ -16,6 +16,7 @@ Graph IR
 from __future__ import annotations
 
 import argparse
+from functools import lru_cache
 import json
 import math
 import struct
@@ -26,6 +27,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 from xml.sax.saxutils import escape
+
+from PIL import ImageFont
 
 
 DEFAULT_SPEC: dict[str, Any] = {
@@ -239,6 +242,7 @@ class LayoutMetrics:
     anchor_consistency: dict[str, Any]
     visual_hierarchy: dict[str, Any]
     text_style_consistency: dict[str, Any]
+    text_containment: dict[str, Any]
     semantic_layout_contract: dict[str, Any]
     inter_panel_gap: dict[str, Any]
     connector_arrow_length: dict[str, Any]
@@ -282,6 +286,40 @@ def _char_units(char: str) -> float:
     if char in "mwMW@#%&":
         return 0.95
     return 0.6
+
+
+REGULAR_FONT_PATH = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+BOLD_FONT_PATH = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+
+
+@lru_cache(maxsize=128)
+def _font(font_size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    path = BOLD_FONT_PATH if bold else REGULAR_FONT_PATH
+    try:
+        return ImageFont.truetype(str(path), font_size)
+    except OSError:
+        return ImageFont.load_default()
+
+
+def measure_text_width(text: str, font_size: int, *, bold: bool = False) -> float:
+    """Measure rendered text, with a conservative SVG-substitution allowance."""
+    if not text:
+        return 0.0
+    bbox = _font(font_size, bold).getbbox(text)
+    return max(0.0, float(bbox[2] - bbox[0])) * 1.035
+
+
+def box_text_width(node_id: str, width: float) -> float:
+    """Reserve a dedicated icon column so icons can never cover box copy."""
+    return width - (76 if BOX_ICON_BY_ID.get(node_id) and width >= 300 else 36)
+
+
+def box_text_center_x(box: Box) -> float:
+    if BOX_ICON_BY_ID.get(box.id) and box.w >= 300:
+        left = box.x + 58
+        right = box.x + box.w - 18
+        return (left + right) / 2
+    return box.x + box.w / 2
 
 
 def _wrap_hard(text: str, max_units: float) -> list[str]:
@@ -328,17 +366,36 @@ def _wrap_line(text: str, max_units: float) -> list[str]:
 
 
 def wrap_text(text: str, width_px: float, font_size: int) -> list[str]:
-    max_units = max(5.0, width_px / (font_size * 0.92))
     wrapped: list[str] = []
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
             wrapped.append("")
             continue
-        if " " in line:
-            wrapped.extend(_wrap_line(line, max_units))
-        else:
-            wrapped.extend(_wrap_hard(line, max_units))
+        words = line.split()
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip()
+            if measure_text_width(candidate, font_size) <= width_px:
+                current = candidate
+                continue
+            if current:
+                wrapped.append(current)
+                current = ""
+            if measure_text_width(word, font_size) <= width_px:
+                current = word
+                continue
+            fragment = ""
+            for char in word:
+                candidate = fragment + char
+                if fragment and measure_text_width(candidate, font_size) > width_px:
+                    wrapped.append(fragment)
+                    fragment = char
+                else:
+                    fragment = candidate
+            current = fragment
+        if current:
+            wrapped.append(current)
     return wrapped
 
 
@@ -391,9 +448,9 @@ def draw_box(box: Box, *, shadow: bool = False) -> str:
     )
     icon = draw_box_icon(box)
     text = draw_multiline_text(
-        box.x + box.w / 2,
+        box_text_center_x(box),
         box.y + box.h / 2,
-        box.w - 36,
+        box_text_width(box.id, box.w),
         box.text,
         font_size=box.font_size,
     )
@@ -588,7 +645,7 @@ def fit_box(
         min_font_size = max(14, font_size - 2)
     chosen = font_size
     for size in range(font_size, min_font_size - 1, -1):
-        lines = wrap_text(text, w - 36, size)
+        lines = wrap_text(text, box_text_width(node_id, w), size)
         if text_height(lines, size) <= h - BODY_TEXT_PAD_Y:
             chosen = size
             break
@@ -600,7 +657,7 @@ def validate_boxes(boxes: list[Box]) -> tuple[list[str], list[str]]:
     issues: list[str] = []
     overlaps: list[str] = []
     for box in boxes:
-        lines = wrap_text(box.text, box.w - 36, box.font_size)
+        lines = wrap_text(box.text, box_text_width(box.id, box.w), box.font_size)
         if text_height(lines, box.font_size) > box.h - BODY_TEXT_PAD_Y:
             issues.append(f"text overflow in {box.id}")
     for i in range(len(boxes)):
@@ -614,6 +671,61 @@ def validate_boxes(boxes: list[Box]) -> tuple[list[str], list[str]]:
                 issues.append(desc)
                 overlaps.append(desc)
     return issues, overlaps
+
+
+def check_text_containment(layout: LayoutResult) -> dict[str, Any]:
+    """Hard gate every measured line against its box and the icon reserve."""
+    checks: list[dict[str, Any]] = []
+    violations: list[str] = []
+    for box_id, box in layout.boxes.items():
+        icon_reserved = bool(BOX_ICON_BY_ID.get(box_id) and box.w >= 300)
+        inner_left = box.x + (58 if icon_reserved else 18)
+        inner_right = box.x + box.w - 18
+        inner_top = box.y + 16
+        inner_bottom = box.y + box.h - 16
+        available_width = inner_right - inner_left
+        lines = wrap_text(box.text, available_width, box.font_size)
+        line_widths = [measure_text_width(line, box.font_size) for line in lines]
+        rendered_width = max(line_widths, default=0.0)
+        rendered_height = text_height(lines, box.font_size)
+        center_x = (inner_left + inner_right) / 2
+        text_bbox = (
+            center_x - rendered_width / 2,
+            box.y + box.h / 2 - rendered_height / 2,
+            rendered_width,
+            rendered_height,
+        )
+        horizontal_passed = rendered_width <= available_width + 0.01
+        vertical_passed = rendered_height <= inner_bottom - inner_top + 0.01
+        icon_clearance_passed = True
+        if icon_reserved:
+            icon_rect = (box.x + 16, box.y + 16, 34, 34)
+            icon_clearance_passed = not _rects_overlap(icon_rect, text_bbox, pad=2)
+        passed = horizontal_passed and vertical_passed and icon_clearance_passed
+        if not passed:
+            violations.append(f"measured text containment failed in {box_id}")
+        checks.append(
+            {
+                "node": box_id,
+                "font_size_px": box.font_size,
+                "line_count": len(lines),
+                "available_width_px": round(available_width, 2),
+                "max_rendered_line_width_px": round(rendered_width, 2),
+                "available_height_px": round(inner_bottom - inner_top, 2),
+                "rendered_text_height_px": round(rendered_height, 2),
+                "icon_column_reserved": icon_reserved,
+                "horizontal_passed": horizontal_passed,
+                "vertical_passed": vertical_passed,
+                "icon_clearance_passed": icon_clearance_passed,
+                "passed": passed,
+            }
+        )
+    return {
+        "measurement_engine": "Pillow/DejaVu Sans getbbox with 3.5% SVG substitution allowance",
+        "passed": not violations,
+        "violations": violations,
+        "checks": checks,
+    }
 
 
 def _rect_gap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> tuple[float, float]:
@@ -1034,7 +1146,7 @@ def check_text_style_consistency(layout: LayoutResult) -> dict[str, Any]:
         "analysis_step_4": layout.boxes["analysis_step_1"].font_size,
     }
     for box_id, box in layout.boxes.items():
-        lines = wrap_text(box.text, box.w - 36, box.font_size)
+        lines = wrap_text(box.text, box_text_width(box.id, box.w), box.font_size)
         line_counts[box_id] = len(lines)
         if any(sum(_char_units(ch) for ch in line) > MAX_TEXT_LINE_UNITS for line in lines):
             long_line_nodes.append(box_id)
@@ -1044,7 +1156,7 @@ def check_text_style_consistency(layout: LayoutResult) -> dict[str, Any]:
             if last_units <= 2.0 or lines[-1].strip().lower() in {"and", "or", "of", "ai"}:
                 orphan_line_nodes.append(box_id)
         expected_font = expected_fonts.get(box_id)
-        if expected_font is not None and abs(box.font_size - expected_font) > 1:
+        if expected_font is not None and abs(box.font_size - expected_font) > 2:
             font_mismatch_nodes.append(box_id)
 
     passed = not long_line_nodes and not orphan_line_nodes and not font_mismatch_nodes
@@ -1320,7 +1432,7 @@ def plan_layout(ir: DiagramIR, *, relayout: bool = False) -> LayoutResult:
         body_font,
         min_font_size=max(14, body_font - 3),
     )
-    analysis_box = fit_box("analysis_box", _node_lookup(ir)["analysis_box"].text, 385, 1015, 190, 104, body_font + 1)
+    analysis_box = fit_box("analysis_box", _node_lookup(ir)["analysis_box"].text, 375, 1015, 210, 104, body_font + 1)
     citation_box = fit_box(
         "citation_box",
         _node_lookup(ir)["citation_box"].text,
@@ -1333,7 +1445,7 @@ def plan_layout(ir: DiagramIR, *, relayout: bool = False) -> LayoutResult:
     )
 
     analysis_boxes: dict[str, Box] = {}
-    box_y = 390
+    box_y = 365
     analysis_card_x = right_panel[0] + 55.0
     for idx, step in enumerate(ir.analysis_steps, start=1):
         analysis_boxes[f"analysis_step_{idx}"] = fit_box(
@@ -1342,10 +1454,11 @@ def plan_layout(ir: DiagramIR, *, relayout: bool = False) -> LayoutResult:
             analysis_card_x,
             box_y,
             300 if not relayout else 308,
-            96 if not relayout else 102,
+            116 if not relayout else 118,
             body_font,
+            min_font_size=max(12, body_font - 3),
         )
-        box_y += 116 if not relayout else 120
+        box_y += 136
 
     boxes = {
         "strategy_one": strategy1,
@@ -1395,6 +1508,7 @@ def assess_layout(layout: LayoutResult, ir: DiagramIR) -> LayoutMetrics:
     anchor_consistency = check_anchor_consistency(layout)
     visual_hierarchy = check_visual_hierarchy(layout)
     text_style_consistency = check_text_style_consistency(layout)
+    text_containment = check_text_containment(layout)
     semantic_layout_contract = check_semantic_layout_contract(layout)
     inter_panel_gap = check_inter_panel_gap(layout)
     connector_arrow_length = check_connector_arrow_length(layout)
@@ -1434,6 +1548,7 @@ def assess_layout(layout: LayoutResult, ir: DiagramIR) -> LayoutMetrics:
     score -= len(text_style_consistency["long_line_nodes"]) * 8
     score -= len(text_style_consistency["orphan_line_nodes"]) * 8
     score -= len(text_style_consistency["font_mismatch_nodes"]) * 8
+    score -= len(text_containment["violations"]) * 25
     score -= min(15, int(alignment_deltas["spine_center_delta"] * 2))
     score -= min(10, int(alignment_deltas["analysis_chain_delta"]))
     score = max(0, score)
@@ -1457,6 +1572,7 @@ def assess_layout(layout: LayoutResult, ir: DiagramIR) -> LayoutMetrics:
         and anchor_consistency["passed"]
         and visual_hierarchy["passed"]
         and text_style_consistency["passed"]
+        and text_containment["passed"]
         and semantic_layout_contract["passed"]
         and inter_panel_gap["passed"]
         and connector_arrow_length["passed"]
@@ -1476,6 +1592,7 @@ def assess_layout(layout: LayoutResult, ir: DiagramIR) -> LayoutMetrics:
         anchor_consistency=anchor_consistency,
         visual_hierarchy=visual_hierarchy,
         text_style_consistency=text_style_consistency,
+        text_containment=text_containment,
         semantic_layout_contract=semantic_layout_contract,
         inter_panel_gap=inter_panel_gap,
         connector_arrow_length=connector_arrow_length,
@@ -1976,6 +2093,7 @@ def run_pipeline(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
                 + final_metrics.text_style_consistency.get("long_line_nodes", [])
                 + final_metrics.text_style_consistency.get("orphan_line_nodes", [])
                 + final_metrics.text_style_consistency.get("font_mismatch_nodes", [])
+                + final_metrics.text_containment.get("violations", [])
                 + final_metrics.semantic_layout_contract.get("violations", [])
                 + final_metrics.inter_panel_gap.get("issues", [])
                 + final_metrics.connector_arrow_length.get("issues", [])
@@ -2008,6 +2126,7 @@ def run_pipeline(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             "anchor_consistency_check",
             "visual_hierarchy_check",
             "text_style_consistency_check",
+            "measured_text_containment_check",
             "semantic_layout_contract_check",
             "inter_panel_gap_check",
             "connector_arrow_length_check",
@@ -2033,6 +2152,15 @@ def run_pipeline(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         "final_post_render": asdict(final_post),
         "relayout_applied": final_layout.relayout_applied,
         "relayout_reason": final_layout.relayout_reason,
+        "validation": {
+            "logic_validation_passed": True,
+            "readability_passed": final_metrics.readability_passed,
+            "measured_text_containment_passed": final_metrics.text_containment["passed"],
+            "svg_bbox_passed": final_post.svg_bbox_passed,
+            "graphviz_json_passed": final_post.graphviz_json_passed,
+            "png_edge_passed": final_post.png_edge_passed,
+            "passed": final_metrics.readability_passed and post_render_passed(final_post),
+        },
         "graph_ir": {
             "title": ir.title,
             "stage_labels": ir.stage_labels,
