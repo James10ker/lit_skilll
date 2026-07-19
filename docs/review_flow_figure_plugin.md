@@ -167,9 +167,12 @@ analysis_panel_arrow
 - 右侧面板：四个数据分析步骤。
 - 中间大箭头：从纳入分析框指向右侧分析面板。
 
+当前视觉系统来自 `refactor/figure1-design-system`：主流程/RQ、纳入、注释和排除分别使用克制的蓝、绿、米色和红色语义色；所有可见框统一为 10 px 圆角和 1.5 px 描边；主路径为 2 px 实线，注释分支为 1 px 虚线。模块不绘制装饰图标，也不为图标预留文本列。完整内容在画布内居中，嵌入式图题放在图形下方。
+
 脚本内置检查包括：
 
 - box 文本是否溢出。
+- Pillow/DejaVu Sans 实测的逐行文本宽度与逐框水平、垂直 containment。
 - box 之间是否重叠。
 - 主干节点是否对齐。
 - 左右面板间距是否在合理范围内。
@@ -181,7 +184,7 @@ analysis_panel_arrow
 
 ## 6. 本地依赖
 
-基础运行依赖 Python 3 标准库。后渲染 PNG 边缘检查依赖 `rsvg-convert`：
+基础运行依赖 Python 3 和 Pillow（用于真实字体度量）。后渲染 PNG 边缘检查依赖 `rsvg-convert`：
 
 ```bash
 rsvg-convert --version
@@ -200,7 +203,7 @@ sudo apt-get install -y librsvg2-bin
 pip install -r requirements.txt
 ```
 
-注意：`requirements.txt` 主要服务于文档转换、数学公式和其他图表处理；该流程图脚本本身主要依赖标准库和系统命令 `rsvg-convert`。
+注意：流程图脚本会优先使用系统的 DejaVu Sans 字体，通过 Pillow `getbbox()` 度量文本，并为 SVG 字体替换保留保守余量；完整验证还需要系统命令 `rsvg-convert`。
 
 ## 7. 命令行使用
 

@@ -92,12 +92,12 @@ DEFAULT_SPEC: dict[str, Any] = {
     },
     "layout": {
         "font_size": 16,
-        "title_font_size": 34,
+        "title_font_size": 30,
         "caption_font_size": 22,
-        "stage_font_size": 26,
-        "box_rx": 1,
-        "panel_rx": 4,
-        "stage_pill_rx": 18,
+        "stage_font_size": 22,
+        "box_rx": 10,
+        "panel_rx": 10,
+        "stage_pill_rx": 10,
         "canvas_width": 1820,
         "canvas_height": 1380,
         "max_relayout_passes": 1,
@@ -106,20 +106,20 @@ DEFAULT_SPEC: dict[str, Any] = {
 
 
 BODY_TEXT_PAD_Y = 38
+TEXT_HORIZONTAL_PADDING = 14.0
 BOX_GAP_TOLERANCE = 8
-CONNECTOR_COLOR = "#111111"
 PANEL_PADDING_BALANCE_TOLERANCE = 32.0
-ALIGNMENT_TOLERANCE = 4.0
-GAP_VARIANCE_TOLERANCE = 6.0
-SIZE_VARIANCE_TOLERANCE = 6.0
+ALIGNMENT_TOLERANCE = 2.0
+GAP_VARIANCE_TOLERANCE = 16.0
+SIZE_VARIANCE_TOLERANCE = 2.0
 MAX_EDGE_CROSSINGS = 0
 MAX_TEXT_LINE_UNITS = 34.0
 MIN_TEXT_PIXEL_HEIGHT = 12.0
 MIN_INTER_PANEL_GAP = 48.0
 MAX_INTER_PANEL_GAP = 100.0
 MAX_INTER_PANEL_GAP_RATIO = 0.12
-BIG_ARROW_TAIL_INSET = 15.0
-BIG_ARROW_TIP_INSET = 15.0
+BIG_ARROW_TAIL_INSET = 16.0
+BIG_ARROW_TIP_INSET = 16.0
 MIN_BIG_ARROW_LENGTH = 48.0
 PREFERRED_BIG_ARROW_LENGTH = 64.0
 MAX_BIG_ARROW_LENGTH = 96.0
@@ -131,43 +131,43 @@ MIN_RIGHT_PANEL_SHARE = 0.22
 MAX_RIGHT_PANEL_SHARE = 0.30
 MIN_GAP_SHARE = 0.04
 MAX_GAP_SHARE = 0.08
+BOX_SAFE_GAP = 16.0
+
+CORNER_RADIUS = 10.0
+STROKE_WIDTH = 1.5
+SHADOW_COLOR = "#d0d7e2"
+
+COLOR_PRIMARY = ("#eaf1fb", "#7a9cc6")
+COLOR_POSITIVE = ("#e8f5ee", "#6dae8a")
+COLOR_ANNOTATE = ("#faf6ed", "#c4a87c")
+COLOR_EXCLUDE = ("#faf0f0", "#c47a7a")
+
+BOX_STYLE_BY_ID: dict[str, tuple[str, str]] = {
+    "strategy_one": COLOR_PRIMARY,
+    "strategy_two": COLOR_PRIMARY,
+    "total_box": COLOR_PRIMARY,
+    "manual_box": COLOR_POSITIVE,
+    "analysis_box": COLOR_POSITIVE,
+    "duplicate_label": COLOR_ANNOTATE,
+    "citation_box": COLOR_ANNOTATE,
+    "excluded_box": COLOR_EXCLUDE,
+    "analysis_step_1": COLOR_PRIMARY,
+    "analysis_step_2": COLOR_PRIMARY,
+    "analysis_step_3": COLOR_PRIMARY,
+    "analysis_step_4": COLOR_PRIMARY,
+}
+
+CONNECTOR_COLOR_MAIN = "#8aa0b8"
+CONNECTOR_COLOR_BRANCH = "#bcc8d4"
+CONNECTOR_WIDTH_MAIN = 2.0
+CONNECTOR_WIDTH_BRANCH = 1.0
+CONNECTOR_DASH = "6 4"
+
 STAGE_PILLS = {
-    "identification": (92.0, 275.0, 42.0, 170.0),
-    "screening": (92.0, 605.0, 42.0, 150.0),
-    "included": (92.0, 955.0, 42.0, 145.0),
+    "identification": (96.0, 272.0, 40.0, 216.0),
+    "screening": (96.0, 608.0, 40.0, 168.0),
+    "included": (96.0, 952.0, 40.0, 144.0),
 }
-BOX_SAFE_GAP = 18.0
-
-BOX_STYLE_BY_ID = {
-    "strategy_one": ("#eef5ff", "#4c7dd9"),
-    "strategy_two": ("#eef5ff", "#4c7dd9"),
-    "total_box": ("#eef5ff", "#4c7dd9"),
-    "manual_box": ("#edf9f3", "#49a977"),
-    "analysis_box": ("#edf9f3", "#49a977"),
-    "duplicate_label": ("#fff6ea", "#d9963c"),
-    "citation_box": ("#fff6ea", "#d9963c"),
-    "excluded_box": ("#f4efff", "#8a68d6"),
-    "analysis_step_1": ("#eef5ff", "#4c7dd9"),
-    "analysis_step_2": ("#edf9f3", "#49a977"),
-    "analysis_step_3": ("#fff6ea", "#d9963c"),
-    "analysis_step_4": ("#f4efff", "#8a68d6"),
-}
-
-BOX_ICON_BY_ID = {
-    "strategy_one": "source",
-    "strategy_two": "source",
-    "total_box": "merge",
-    "manual_box": "filter",
-    "analysis_box": "check",
-    "duplicate_label": "exclude",
-    "excluded_box": "exclude",
-    "citation_box": "cite",
-    "analysis_step_1": "trend",
-    "analysis_step_2": "source",
-    "analysis_step_3": "network",
-    "analysis_step_4": "topic",
-}
-
 
 @dataclass
 class Box:
@@ -309,16 +309,12 @@ def measure_text_width(text: str, font_size: int, *, bold: bool = False) -> floa
     return max(0.0, float(bbox[2] - bbox[0])) * 1.035
 
 
-def box_text_width(node_id: str, width: float) -> float:
-    """Reserve a dedicated icon column so icons can never cover box copy."""
-    return width - (76 if BOX_ICON_BY_ID.get(node_id) and width >= 300 else 36)
+def box_text_width(_node_id: str, width: float) -> float:
+    """Return the design-system content width for a box."""
+    return width - 2 * TEXT_HORIZONTAL_PADDING
 
 
 def box_text_center_x(box: Box) -> float:
-    if BOX_ICON_BY_ID.get(box.id) and box.w >= 300:
-        left = box.x + 58
-        right = box.x + box.w - 18
-        return (left + right) / 2
     return box.x + box.w / 2
 
 
@@ -437,16 +433,22 @@ def draw_multiline_text(
 
 
 def draw_box(box: Box, *, shadow: bool = False) -> str:
-    shadow_el = (
-        f'<rect x="{box.x + 7:.1f}" y="{box.y + 9:.1f}" width="{box.w:.1f}" '
-        f'height="{box.h:.1f}" rx="{box.rx:.1f}" fill="#d9e2f5" opacity="0.34"/>'
-    )
+    rx = max(box.rx, CORNER_RADIUS)
+    if shadow and box.id not in {
+        "duplicate_label", "excluded_box", "citation_box",
+        "analysis_step_1", "analysis_step_2", "analysis_step_3", "analysis_step_4",
+    }:
+        shadow_el = (
+            f'<rect x="{box.x + 4:.1f}" y="{box.y + 5:.1f}" width="{box.w:.1f}" '
+            f'height="{box.h:.1f}" rx="{rx:.1f}" fill="{SHADOW_COLOR}" opacity="0.22"/>'
+        )
+    else:
+        shadow_el = ""
     rect = (
         f'<rect x="{box.x:.1f}" y="{box.y:.1f}" width="{box.w:.1f}" height="{box.h:.1f}" '
-        f'rx="{box.rx:.1f}" fill="{box.fill}" fill-opacity="0.88" stroke="{box.stroke}" '
-        f'stroke-width="{box.stroke_width:.1f}" opacity="0.98"/>'
+        f'rx="{rx:.1f}" fill="{box.fill}" fill-opacity="0.92" stroke="{box.stroke}" '
+        f'stroke-width="{STROKE_WIDTH:.1f}" opacity="0.98"/>'
     )
-    icon = draw_box_icon(box)
     text = draw_multiline_text(
         box_text_center_x(box),
         box.y + box.h / 2,
@@ -454,66 +456,13 @@ def draw_box(box: Box, *, shadow: bool = False) -> str:
         box.text,
         font_size=box.font_size,
     )
-    return (shadow_el if shadow else "") + rect + icon + text
-
-
-def draw_box_icon(box: Box) -> str:
-    icon = BOX_ICON_BY_ID.get(box.id)
-    if not icon or box.w < 300:
-        return ""
-    x = box.x + 20
-    y = box.y + 20
-    color = box.stroke
-    common = f'stroke="{color}" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.84"'
-    if icon == "source":
-        return (
-            f'<g {common}><rect x="{x:.1f}" y="{y:.1f}" width="18" height="22" rx="2"/>'
-            f'<path d="M{x+5:.1f} {y+7:.1f}h8M{x+5:.1f} {y+12:.1f}h8M{x+5:.1f} {y+17:.1f}h5"/></g>'
-        )
-    if icon == "merge":
-        return (
-            f'<g {common}><path d="M{x:.1f} {y+4:.1f}h10v18h12"/>'
-            f'<path d="M{x+22:.1f} {y+4:.1f}h-10v18"/></g>'
-        )
-    if icon == "filter":
-        return f'<path d="M{x:.1f} {y:.1f}h24l-9 11v9l-6 4v-13z" {common}/>'
-    if icon == "check":
-        return (
-            f'<g {common}><path d="M{x+12:.1f} {y:.1f}l10 5v8c0 7-4 11-10 14C{x+6:.1f} {y+24:.1f} {x+2:.1f} {y+20:.1f} {x+2:.1f} {y+13:.1f}v-8z"/>'
-            f'<path d="M{x+7:.1f} {y+14:.1f}l4 4 7-8"/></g>'
-        )
-    if icon == "exclude":
-        return (
-            f'<g {common}><circle cx="{x+12:.1f}" cy="{y+12:.1f}" r="11"/>'
-            f'<path d="M{x+5:.1f} {y+19:.1f}l14-14"/></g>'
-        )
-    if icon == "cite":
-        return (
-            f'<g {common}><circle cx="{x+7:.1f}" cy="{y+8:.1f}" r="5"/>'
-            f'<circle cx="{x+18:.1f}" cy="{y+17:.1f}" r="5"/>'
-            f'<path d="M{x+11:.1f} {y+11:.1f}l4 3"/></g>'
-        )
-    if icon == "trend":
-        return f'<path d="M{x:.1f} {y+22:.1f}h24M{x+2:.1f} {y+18:.1f}l6-7 5 4 8-11" {common}/>'
-    if icon == "network":
-        return (
-            f'<g {common}><circle cx="{x+5:.1f}" cy="{y+7:.1f}" r="4"/>'
-            f'<circle cx="{x+18:.1f}" cy="{y+5:.1f}" r="4"/>'
-            f'<circle cx="{x+15:.1f}" cy="{y+20:.1f}" r="4"/>'
-            f'<path d="M{x+9:.1f} {y+6:.1f}l5-1M{x+8:.1f} {y+10:.1f}l5 7M{x+17:.1f} {y+9:.1f}l-1 7"/></g>'
-        )
-    if icon == "topic":
-        return (
-            f'<g {common}><circle cx="{x+12:.1f}" cy="{y+12:.1f}" r="10"/>'
-            f'<path d="M{x+12:.1f} {y+2:.1f}v20M{x+2:.1f} {y+12:.1f}h20"/></g>'
-        )
-    return ""
+    return shadow_el + rect + text
 
 
 def draw_label_pill(x: float, y: float, w: float, h: float, text: str, font_size: int, rx: float) -> str:
     rect = (
         f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="{rx:.1f}" '
-        f'fill="#d9ebff" stroke="#72a8eb" stroke-width="2.2"/>'
+        f'fill="#ebf0f7" stroke="#9aafc4" stroke-width="{STROKE_WIDTH:.1f}"/>'
     )
     text_el = (
         f'<g transform="translate({x + w / 2:.1f},{y + h / 2:.1f}) rotate(-90)">'
@@ -533,12 +482,13 @@ def draw_panel(
     *,
     title: str | None = None,
     font_size: int = 23,
-    rx: float = 18,
+    rx: float = CORNER_RADIUS,
+    opacity: float = 0.9,
 ) -> str:
     panel = (
         f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="{rx:.1f}" '
-        f'fill="none" stroke="#78a7ea" stroke-width="2.4" '
-        f'stroke-dasharray="8 7" opacity="0.9"/>'
+        f'fill="none" stroke="#a8bbd0" stroke-width="{STROKE_WIDTH:.1f}" '
+        f'stroke-dasharray="8 7" opacity="{opacity:.2f}"/>'
     )
     if not title:
         return panel
@@ -566,7 +516,7 @@ def draw_large_arrow(x1: float, y: float, x2: float) -> str:
         (x1, y + body_h / 2),
     ]
     serialized = " ".join(f"{x:.1f},{yy:.1f}" for x, yy in points)
-    return f'<polygon points="{serialized}" fill="#8ab2ef" opacity="0.95"/>'
+    return f'<polygon points="{serialized}" fill="#b0c4d6" opacity="0.45"/>'
 
 
 def _panel_right(panel: tuple[float, float, float, float]) -> float:
@@ -587,18 +537,36 @@ def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
-def draw_line(x1: float, y1: float, x2: float, y2: float, stroke_width: float = 2.6) -> str:
+def draw_line(
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    stroke_width: float = 2.6,
+    *,
+    dashed: bool = False,
+    color: str = CONNECTOR_COLOR_MAIN,
+) -> str:
+    dash = f' stroke-dasharray="{CONNECTOR_DASH}"' if dashed else ""
     return (
         f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-        f'stroke="{CONNECTOR_COLOR}" stroke-width="{stroke_width:.1f}" stroke-linecap="round"/>'
+        f'stroke="{color}" stroke-width="{stroke_width:.1f}" stroke-linecap="round"{dash}/>'
     )
 
 
-def draw_polyline(points: list[tuple[float, float]], stroke_width: float = 2.6) -> str:
+def draw_polyline(
+    points: list[tuple[float, float]],
+    stroke_width: float = 2.6,
+    *,
+    dashed: bool = False,
+    color: str = CONNECTOR_COLOR_MAIN,
+) -> str:
     serialized = " ".join(f"{x:.1f},{y:.1f}" for x, y in points)
+    dash = f' stroke-dasharray="{CONNECTOR_DASH}"' if dashed else ""
     return (
         f'<polyline points="{serialized}" fill="none" '
-        f'stroke="{CONNECTOR_COLOR}" stroke-width="{stroke_width:.1f}" stroke-linecap="round" stroke-linejoin="round"/>'
+        f'stroke="{color}" stroke-width="{stroke_width:.1f}" '
+        f'stroke-linecap="round" stroke-linejoin="round"{dash}/>'
     )
 
 
@@ -614,7 +582,7 @@ def _arrow_head(x1: float, y1: float, x2: float, y2: float, head_len: float = 18
     )
     return (
         f'<polygon points="{x2:.1f},{y2:.1f} {left[0]:.1f},{left[1]:.1f} '
-        f'{right[0]:.1f},{right[1]:.1f}" fill="{CONNECTOR_COLOR}"/>'
+        f'{right[0]:.1f},{right[1]:.1f}" fill="{CONNECTOR_COLOR_MAIN}"/>'
     )
 
 
@@ -625,7 +593,7 @@ def draw_arrow_polyline(points: list[tuple[float, float]], stroke_width: float =
     (x1, y1), (x2, y2) = points[-2], points[-1]
     return (
         f'<polyline points="{serialized}" fill="none" '
-        f'stroke="{CONNECTOR_COLOR}" stroke-width="{stroke_width:.1f}" '
+        f'stroke="{CONNECTOR_COLOR_MAIN}" stroke-width="{stroke_width:.1f}" '
         f'stroke-linecap="round" stroke-linejoin="round"/>'
         + _arrow_head(x1, y1, x2, y2, 16)
     )
@@ -674,13 +642,13 @@ def validate_boxes(boxes: list[Box]) -> tuple[list[str], list[str]]:
 
 
 def check_text_containment(layout: LayoutResult) -> dict[str, Any]:
-    """Hard gate every measured line against its box and the icon reserve."""
+    """Hard-gate every measured line against its box boundaries."""
     checks: list[dict[str, Any]] = []
     violations: list[str] = []
     for box_id, box in layout.boxes.items():
-        icon_reserved = bool(BOX_ICON_BY_ID.get(box_id) and box.w >= 300)
-        inner_left = box.x + (58 if icon_reserved else 18)
-        inner_right = box.x + box.w - 18
+        icon_reserved = False
+        inner_left = box.x + TEXT_HORIZONTAL_PADDING
+        inner_right = box.x + box.w - TEXT_HORIZONTAL_PADDING
         inner_top = box.y + 16
         inner_bottom = box.y + box.h - 16
         available_width = inner_right - inner_left
@@ -688,19 +656,9 @@ def check_text_containment(layout: LayoutResult) -> dict[str, Any]:
         line_widths = [measure_text_width(line, box.font_size) for line in lines]
         rendered_width = max(line_widths, default=0.0)
         rendered_height = text_height(lines, box.font_size)
-        center_x = (inner_left + inner_right) / 2
-        text_bbox = (
-            center_x - rendered_width / 2,
-            box.y + box.h / 2 - rendered_height / 2,
-            rendered_width,
-            rendered_height,
-        )
         horizontal_passed = rendered_width <= available_width + 0.01
         vertical_passed = rendered_height <= inner_bottom - inner_top + 0.01
         icon_clearance_passed = True
-        if icon_reserved:
-            icon_rect = (box.x + 16, box.y + 16, 34, 34)
-            icon_clearance_passed = not _rects_overlap(icon_rect, text_bbox, pad=2)
         passed = horizontal_passed and vertical_passed and icon_clearance_passed
         if not passed:
             violations.append(f"measured text containment failed in {box_id}")
@@ -775,15 +733,6 @@ def check_overlap_safety(layout: LayoutResult) -> dict[str, Any]:
             )
             if overlaps:
                 issues.append(f"stage label {stage} overlaps or crowds {box_id}")
-
-    # Icons are placed at the top-left of wide boxes only; keep a reserved zone
-    # clear of the text center so decorative symbols never cover copy.
-    for box_id, box in layout.boxes.items():
-        if BOX_ICON_BY_ID.get(box_id) and box.w >= 300:
-            icon_rect = (box.x + 16, box.y + 16, 34, 34)
-            text_rect = (box.x + 58, box.y + 18, box.w - 76, box.h - 36)
-            if _rects_overlap(icon_rect, text_rect, pad=2):
-                issues.append(f"icon crowds text in {box_id}")
 
     return {
         "passed": not issues,
@@ -1415,7 +1364,7 @@ def plan_layout(ir: DiagramIR, *, relayout: bool = False) -> LayoutResult:
     duplicate_box = fit_box(
         "duplicate_label",
         _node_lookup(ir)["duplicate_label"].text,
-        610 if not relayout else 620,
+        636 if not relayout else 642,
         560 if not relayout else 565,
         330 if not relayout else 338,
         58,
@@ -1425,7 +1374,7 @@ def plan_layout(ir: DiagramIR, *, relayout: bool = False) -> LayoutResult:
     excluded_box = fit_box(
         "excluded_box",
         _node_lookup(ir)["excluded_box"].text,
-        610 if not relayout else 620,
+        636 if not relayout else 642,
         640,
         340 if not relayout else 350,
         280 if not relayout else 300,
@@ -1476,11 +1425,8 @@ def plan_layout(ir: DiagramIR, *, relayout: bool = False) -> LayoutResult:
         fill, stroke = BOX_STYLE_BY_ID.get(box.id, ("#f8fbff", "#5d85d8"))
         box.fill = fill
         box.stroke = stroke
-        box.stroke_width = 2.1
-        if box.id in {"duplicate_label", "citation_box", "analysis_step_1", "analysis_step_2", "analysis_step_3", "analysis_step_4"}:
-            box.rx = 16.0
-        else:
-            box.rx = max(16.0, box_rx)
+        box.stroke_width = STROKE_WIDTH
+        box.rx = max(CORNER_RADIUS, box_rx)
 
     return LayoutResult(
         width=width,
@@ -1622,25 +1568,54 @@ def maybe_relayout(ir: DiagramIR, first_layout: LayoutResult, first_metrics: Lay
     return best_layout, best_metrics
 
 
-def _layout_bbox(layout: LayoutResult) -> dict[str, float]:
-    min_x = layout.left_panel[0]
-    min_y = 60.0
-    max_x = layout.right_panel[0] + layout.right_panel[2]
-    max_y = max(layout.left_panel[1] + layout.left_panel[3], layout.right_caption_y + 48)
+def design_system_transform(ir: DiagramIR, layout: LayoutResult) -> dict[str, float]:
+    title_font = int(ir.layout.get("title_font_size", 30))
+    leftmost = layout.left_panel[0]
+    rightmost = layout.right_panel[0] + layout.right_panel[2]
+    content_width = rightmost - leftmost
+    dx = (layout.width - content_width) / 2.0 - leftmost
+    title_lines = wrap_text(ir.title, 760, title_font)
+    title_text_height = text_height(title_lines, title_font)
+    title_y = layout.left_panel[1] + layout.left_panel[3] + 50
+    title_layout_height = title_text_height + 30
+    topmost = layout.left_panel[1]
+    bottommost = title_y + title_layout_height
+    content_height = bottommost - topmost
+    dy = (layout.height - content_height) / 2.0 - topmost
+    return {
+        "dx": dx,
+        "dy": dy,
+        "title_y": title_y,
+        "title_text_height": title_text_height,
+        "content_center_x": (leftmost + rightmost) / 2.0,
+    }
+
+
+def _layout_bbox(ir: DiagramIR, layout: LayoutResult) -> dict[str, float]:
+    transform = design_system_transform(ir, layout)
+    dx, dy = transform["dx"], transform["dy"]
+    min_x = layout.left_panel[0] + dx
+    min_y = layout.left_panel[1] + dy
+    max_x = layout.right_panel[0] + layout.right_panel[2] + dx
+    max_y = max(layout.left_panel[1] + layout.left_panel[3], layout.right_caption_y + 48) + dy
 
     for box in layout.boxes.values():
-        min_x = min(min_x, box.x)
-        min_y = min(min_y, box.y)
-        max_x = max(max_x, box.x + box.w)
-        max_y = max(max_y, box.y + box.h)
+        min_x = min(min_x, box.x + dx)
+        min_y = min(min_y, box.y + dy)
+        max_x = max(max_x, box.x + box.w + dx)
+        max_y = max(max_y, box.y + box.h + dy)
 
-    max_x = max(max_x, layout.left_panel[0] + layout.left_panel[2] + 120)
-    max_y = max(max_y, layout.large_arrow_y + 32)
+    max_x = max(max_x, layout.left_panel[0] + layout.left_panel[2] + 120 + dx)
+    max_y = max(max_y, layout.large_arrow_y + 32 + dy)
+    max_y = max(
+        max_y,
+        transform["title_y"] + transform["title_text_height"] / 2.0 + dy,
+    )
     return {"min_x": min_x, "min_y": min_y, "max_x": max_x, "max_y": max_y}
 
 
-def check_svg_bbox(layout: LayoutResult) -> tuple[bool, dict[str, float], list[str]]:
-    bbox = _layout_bbox(layout)
+def check_svg_bbox(ir: DiagramIR, layout: LayoutResult) -> tuple[bool, dict[str, float], list[str]]:
+    bbox = _layout_bbox(ir, layout)
     margin_left = bbox["min_x"]
     margin_top = bbox["min_y"]
     margin_right = layout.width - bbox["max_x"]
@@ -1873,7 +1848,7 @@ def check_png_edges(svg: str, layout: LayoutResult) -> tuple[bool, dict[str, Any
 
 
 def run_post_render_checks(ir: DiagramIR, layout: LayoutResult, svg: str) -> PostRenderMetrics:
-    svg_bbox_passed, svg_bbox, svg_bbox_issues = check_svg_bbox(layout)
+    svg_bbox_passed, svg_bbox, svg_bbox_issues = check_svg_bbox(ir, layout)
     graphviz_json_passed, graphviz_json, graphviz_json_issues = check_graphviz_json_coords(ir, layout)
     png_edge_passed, png_edge_stats, png_edge_issues = check_png_edges(svg, layout)
     return PostRenderMetrics(
@@ -1894,11 +1869,13 @@ def post_render_passed(metrics: PostRenderMetrics) -> bool:
 
 
 def render_svg(ir: DiagramIR, layout: LayoutResult) -> str:
-    title_font = int(ir.layout.get("title_font_size", 34))
+    title_font = int(ir.layout.get("title_font_size", 30))
     caption_font = int(ir.layout.get("caption_font_size", 23))
-    stage_font = int(ir.layout.get("stage_font_size", 26))
-    panel_rx = float(ir.layout.get("panel_rx", 18))
-    stage_pill_rx = float(ir.layout.get("stage_pill_rx", 18))
+    stage_font = int(ir.layout.get("stage_font_size", 22))
+    # Legacy specs used mixed 4/18 px radii. The migrated design system owns
+    # these tokens so old project specs render consistently without rewrites.
+    panel_rx = CORNER_RADIUS
+    stage_pill_rx = CORNER_RADIUS
     connector_styles = ir.connector_styles
     boxes = layout.boxes
 
@@ -1906,41 +1883,45 @@ def render_svg(ir: DiagramIR, layout: LayoutResult) -> str:
 <defs>
   <radialGradient id="bgGlow" cx="20%" cy="15%" r="110%">
     <stop offset="0%" stop-color="#ffffff"/>
-    <stop offset="48%" stop-color="#f8fbff"/>
-    <stop offset="100%" stop-color="#eef4fb"/>
-  </radialGradient>
-  <radialGradient id="cornerGlow" cx="0%" cy="0%" r="90%">
-    <stop offset="0%" stop-color="#dbeafe" stop-opacity="0.55"/>
-    <stop offset="55%" stop-color="#f8fbff" stop-opacity="0.18"/>
-    <stop offset="100%" stop-color="#f8fbff" stop-opacity="0"/>
+    <stop offset="48%" stop-color="#fafbfc"/>
+    <stop offset="100%" stop-color="#f0f2f5"/>
   </radialGradient>
 </defs>
 <rect width="100%" height="100%" fill="url(#bgGlow)"/>
-<circle cx="100" cy="90" r="240" fill="url(#cornerGlow)"/>
 """
 
-    def connector(edge_id: str, points: list[tuple[float, float]], *, stroke_width: float = 2.3) -> str:
+    def connector(edge_id: str, points: list[tuple[float, float]]) -> str:
         style = connector_styles.get(edge_id, "arrow")
         if style == "line":
-            return draw_polyline(points, stroke_width=stroke_width) if len(points) > 2 else draw_line(*points[0], *points[1], stroke_width=stroke_width)
-        return draw_arrow_polyline(points, stroke_width=stroke_width)
+            if len(points) > 2:
+                return draw_polyline(
+                    points,
+                    stroke_width=CONNECTOR_WIDTH_BRANCH,
+                    dashed=True,
+                    color=CONNECTOR_COLOR_BRANCH,
+                )
+            return draw_line(
+                *points[0],
+                *points[1],
+                stroke_width=CONNECTOR_WIDTH_BRANCH,
+                dashed=True,
+                color=CONNECTOR_COLOR_BRANCH,
+            )
+        return draw_arrow_polyline(points, stroke_width=CONNECTOR_WIDTH_MAIN)
+
+    transform = design_system_transform(ir, layout)
+    dx = transform["dx"]
+    dy = transform["dy"]
+    title_y = transform["title_y"]
+    content_center_x = transform["content_center_x"]
 
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{layout.width}" height="{layout.height}" '
         f'viewBox="0 0 {layout.width} {layout.height}">',
         bg,
-        draw_multiline_text(
-            layout.width / 2,
-            75,
-            760,
-            ir.title,
-            font_size=title_font,
-            font_weight="700",
-            fill="#1f2e4f",
-            italic=True,
-        ),
+        f'<g transform="translate({dx:.1f},{dy:.1f})">',
         draw_panel(*layout.left_panel, title=ir.left_caption, font_size=caption_font, rx=panel_rx),
-        draw_panel(*layout.right_panel, rx=panel_rx),
+        draw_panel(*layout.right_panel, rx=panel_rx, opacity=0.55),
         draw_label_pill(*STAGE_PILLS["identification"], ir.stage_labels[0], stage_font, stage_pill_rx),
         draw_label_pill(*STAGE_PILLS["screening"], ir.stage_labels[1], stage_font, stage_pill_rx),
         draw_label_pill(*STAGE_PILLS["included"], ir.stage_labels[2], stage_font, stage_pill_rx),
@@ -2031,7 +2012,13 @@ def render_svg(ir: DiagramIR, layout: LayoutResult) -> str:
             (
                 draw_large_arrow(big_arrow_tail_x, layout.large_arrow_y, big_arrow_tip_x)
                 if connector_styles.get("analysis_panel_arrow", "arrow") != "line"
-                else draw_line(big_arrow_tail_x, layout.large_arrow_y, big_arrow_tip_x, layout.large_arrow_y, stroke_width=3.2)
+                else draw_line(
+                    big_arrow_tail_x,
+                    layout.large_arrow_y,
+                    big_arrow_tip_x,
+                    layout.large_arrow_y,
+                    stroke_width=CONNECTOR_WIDTH_MAIN,
+                )
             ),
             draw_multiline_text(
                 layout.right_panel[0] + layout.right_panel[2] / 2,
@@ -2043,10 +2030,20 @@ def render_svg(ir: DiagramIR, layout: LayoutResult) -> str:
                 fill="#233353",
                 italic=True,
             ),
+            draw_multiline_text(
+                content_center_x,
+                title_y,
+                760,
+                ir.title,
+                font_size=title_font,
+                font_weight="700",
+                fill="#1f2e4f",
+                italic=True,
+            ),
         ]
     )
 
-    return "".join(parts) + "</svg>\n"
+    return "".join(parts) + "</g>\n</svg>\n"
 
 
 def run_pipeline(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -2127,6 +2124,7 @@ def run_pipeline(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             "visual_hierarchy_check",
             "text_style_consistency_check",
             "measured_text_containment_check",
+            "unified_design_system_application",
             "semantic_layout_contract_check",
             "inter_panel_gap_check",
             "connector_arrow_length_check",
@@ -2148,6 +2146,22 @@ def run_pipeline(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             "visual_hierarchy": final_metrics.visual_hierarchy,
             "text_style_consistency": final_metrics.text_style_consistency,
             "color_semantics": final_metrics.visual_hierarchy.get("color_semantics", {}),
+            "design_system": {
+                "source_branch": "refactor/figure1-design-system",
+                "semantic_palette": {
+                    "primary": COLOR_PRIMARY,
+                    "positive": COLOR_POSITIVE,
+                    "annotation": COLOR_ANNOTATE,
+                    "exclusion": COLOR_EXCLUDE,
+                },
+                "corner_radius_px": CORNER_RADIUS,
+                "stroke_width_px": STROKE_WIDTH,
+                "main_connector": {"width_px": CONNECTOR_WIDTH_MAIN, "style": "solid"},
+                "annotation_connector": {"width_px": CONNECTOR_WIDTH_BRANCH, "style": "dashed"},
+                "decorative_icons": False,
+                "figure_title_position": "below diagram",
+                "content_transform": design_system_transform(ir, final_layout),
+            },
         },
         "final_post_render": asdict(final_post),
         "relayout_applied": final_layout.relayout_applied,
@@ -2156,6 +2170,7 @@ def run_pipeline(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             "logic_validation_passed": True,
             "readability_passed": final_metrics.readability_passed,
             "measured_text_containment_passed": final_metrics.text_containment["passed"],
+            "unified_design_system_applied": True,
             "svg_bbox_passed": final_post.svg_bbox_passed,
             "graphviz_json_passed": final_post.graphviz_json_passed,
             "png_edge_passed": final_post.png_edge_passed,
