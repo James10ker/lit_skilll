@@ -10,6 +10,8 @@
 | 资料扫描 | 读取本地论文、Word、PPT、笔记、BibTeX、旧稿，整理文献矩阵 |
 | 联网自搜 | 无本地材料时主动检索公开论文页、预印本、数据库摘要和 DOI |
 | 文献检索 | 设计关键词，补充检索，记录纳入/排除理由和待核验项 |
+| 结构化文献处理 | OpenAlex/Crossref 批量检索、跨库去重、版本合并、四级访问权限和全文章节解析 |
+| 证据管理 | Paper Card、Theme Synthesis 与可程序验证的 Claim–Evidence Store v2 |
 | 框架构建 | 提炼研究问题、分类维度、方法谱系、争议和未来方向 |
 | 任意主题综述 | 用户只给主题时，自动生成 RQ、检索来源、图表计划和综述 |
 | 参考综述复现 | 按参考综述的数据来源、RQ 和图表类型合成新综述；需要评测时再对比效果 |
@@ -79,6 +81,7 @@ literature-review-skill/
 │   ├── project_scan.md
 │   ├── research_question_analyzer.md
 │   ├── literature_search.md
+│   ├── structured_literature_pipeline.md
 │   ├── reference_review_synthesis.md
 │   ├── figure_table_handling.md
 │   ├── outline_preview.md
@@ -91,6 +94,8 @@ literature-review-skill/
 │   ├── correction_handler.md
 │   └── style_reference.md
 ├── tools/
+│   ├── literature_pipeline/
+│   ├── run_literature_pipeline.py
 │   ├── render_review_figure1.py
 │   ├── render_bibliometric_network.py
 │   ├── render_temporal_topic_figures.py
@@ -100,4 +105,4 @@ literature-review-skill/
 
 ## 交付约定
 
-默认输出到 `outputs/{主题标识}/`，包含 `review.tex`、`references.bib`、`figures/`、`data/evidence_ledger.json` 和 `reports/`。所有图表 report 与 `latex_quality.report.json` 通过后才交付；若环境提供 LaTeX 编译器，还必须完成编译验证。
+默认输出到 `outputs/{主题标识}/`，包含 `review.tex`、`references.bib`、`figures/`、`data/paper_store.json`、`data/paper_cards.json`、`data/theme_syntheses.json`、`data/evidence_ledger.json` 和 `reports/`。证据权限、所有图表 report 与 `latex_quality.report.json` 通过后才交付；若环境提供 LaTeX 编译器，还必须完成编译验证。

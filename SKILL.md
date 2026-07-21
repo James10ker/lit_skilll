@@ -1,12 +1,11 @@
 ---
 name: literature-review-skill
-description: "从用户爬取的论文/PDF/元数据独立生成全英文高质量文献综述或复现参考综述：完成证据提取、RQ 综合、流程图、年度发文量图、连接图、双五年 topic 词云、引用与主动质量门禁，达标后直接交付完整 LaTeX 工程。适用于 Claude Code + DeepSeek 或其他模型执行综述写作、AIEd 参考论文复现和图表合成。| Evidence-grounded, English-only literature review generation with validated figures, self-correction, and compile-ready LaTeX delivery."
-allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
+description: "从主题、本地论文或学术 API 生成全英文、证据可追溯的文献综述：批量检索与跨库去重、版本合并、四级读取权限、开放全文章节解析、Paper Card、Theme Synthesis、Claim–Evidence 验证、RQ 综合、图表、LaTeX 和质量门禁。适用于 Claude Code/Codex 处理约百篇参考文献、复现参考综述或修订现有综述，尤其在需要防止摘要越权、引用幻觉和无法定位证据时使用。"
 ---
 
 # 论文综述撰写 Skill
 
-本技能覆盖 **选题澄清** -> **资料扫描或联网自搜** -> **文献检索与筛选** -> **证据台账** -> **研究问题生成/对齐** -> **可验证图表合成** -> **研究问题回答** -> **LaTeX 成稿** -> **主动质检与修订** 的完整流程。参考复现或系统评测任务可加入 **效果对比**。分步指令位于 `prompts/`；执行每一步前先读取对应文件。
+本技能覆盖 **选题澄清** -> **资料扫描或学术 API 检索** -> **元数据归一化与版本合并** -> **选择性全文/章节读取** -> **Paper Card 与 Theme Synthesis** -> **Claim–Evidence 验证** -> **研究问题生成/对齐** -> **图表合成** -> **LaTeX 成稿** -> **引用审计与质量门禁**。参考复现或系统评测任务可加入 **效果对比**。分步指令位于 `prompts/`；执行每一步前先读取对应文件。
 
 支持两种模式：
 
@@ -36,6 +35,9 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 - 所有关键判断应能回溯到具体文献或用户提供材料。
 - 正文声明的 RQ、`evidence_ledger.json` 覆盖的 RQ 和图表计划必须使用同一组编号；不得出现正文只有 RQ1--RQ3 而报告声称覆盖 RQ1--RQ5 的情况。
 - 必须报告可用全文、仅摘要和仅元数据记录的数量及比例。若多数记录没有全文，方法、实验效果和细节性结论只能基于有全文的子集；不得把标题/摘要级综合写成全量全文综述。
+- 统一使用 `metadata_only`、`abstract_only`、`section_level`、`fulltext` 四级访问状态。程序派生 `allowed_claim_types`，引用深度不得超过读取深度。
+- 区分论文存在性与论点支持。索引 API 只能验证 `existence_verified`；只有实际读取并定位的内容才能验证 `claim_supported`。
+- 同一工作的预印本、会议版和期刊版归入统一 `work_id`；分别记录正式引用版本和实际读取版本。
 - 默认不做论文图表内容分析，不分析参考图表的颜色、布局、节点位置或视觉细节。
 - 图表默认是“图表合成”：根据本次检索/筛选得到的文献数据，生成与参考综述同类型、同功能的新图表。
 - 参考复现任务默认生成流程图、年度发文量柱状图和双五年 topic 词云；合作数据充分时再生成连接图。普通综述按 RQ 与数据生成必要图表。所有已生成图必须通过各自 report 的几何与数据校验。参考 Figure 7/8 式连接图必须使用力导向 node-link 形式：节点面积表示子集发文量、线宽表示重复合作强度、颜色表示网络社区。
@@ -56,6 +58,10 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 | 加载分步指令 | `Read` -> `prompts/*.md`，按下方映射执行 |
 | 扫描本地论文与资料 | 先列目录，再按题名、摘要、引言、方法、实验、结论、参考文献精读 |
 | 无本地材料时联网找论文 | 读 `prompts/literature_search.md`；用 WebSearch 检索论文页、预印本、数据库摘要页、综述和基准论文；记录 URL/DOI/可访问性 |
+| 结构化文献流水线 | 读 `prompts/structured_literature_pipeline.md` 和 `references/literature_pipeline.md`；生成 Paper Store、Paper Card、Theme Synthesis 和 Claim–Evidence Store v2 |
+| API 检索与去重 | `python3 tools/run_literature_pipeline.py search --query "..." --sources openalex,crossref --limit 300 --output {candidates.json}` |
+| 正文解析 | `python3 tools/run_literature_pipeline.py parse --input {document} --paper-id {paper_id} --output {fulltext.json}` |
+| 证据权限门禁 | `python3 tools/run_literature_pipeline.py validate-evidence --ledger {ledger.json} --paper-store {paper_store.json} --report {report.json}` |
 | 任意主题自动综述 | 读 `prompts/reference_review_synthesis.md`；未给参考综述时，自动生成主题对应 RQ、检索来源、图表计划和综述结构 |
 | 参考综述复现 | 读 `prompts/reference_review_synthesis.md`；给出参考综述时，按参考综述的数据来源、RQ 和图表类型合成报告；仅在复现实验/评测要求下加入效果对比 |
 | Office 输入转换 | Word/PPT 作为输入时使用仓库已有转换工具；这不改变最终 LaTeX 交付格式 |
@@ -75,6 +81,7 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 | Step 2 | `prompts/project_scan.md` | 扫描用户提供的论文、笔记、课程材料、代码/实验资料 |
 | Step 3 | `prompts/research_question_analyzer.md` | 提炼研究问题、分析维度、分类框架和综述主线 |
 | Step 4 | `prompts/literature_search.md` | 检索、筛选、去重、记录文献信息和证据强度 |
+| Step 5A | `prompts/structured_literature_pipeline.md` | 统一 Paper Schema、版本合并、选择性全文读取、Paper Card、Theme Synthesis 与 Claim–Evidence 验证 |
 | Step 5 | `prompts/reference_review_synthesis.md` | 任意主题自动综述或按参考综述的数据来源、RQ 和图表类型进行复现式合成 |
 | Step 6 | `prompts/figure_table_handling.md` | 根据本次文献统计数据生成同类型图表，不做图表内容分析 |
 | Step 7 | `prompts/outline_preview.md` | 成稿前给出提纲、文献矩阵、图表计划和论证路线预览 |
@@ -91,14 +98,15 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 1. `Read prompts/intake.md`，确认任务边界；信息不足时只问最关键的问题。
 2. `Read prompts/project_scan.md`，扫描用户提供材料；Office 文件先转换为 Markdown。若用户没有提供材料或目录为空，不要停止，转入 `literature_search.md` 的联网自搜模式。
 3. `Read prompts/research_question_analyzer.md`，形成研究问题、分析维度和初步分类。
-4. `Read prompts/literature_search.md`，补充检索并筛选文献；记录纳入/排除理由，并建立逐条关键结论到引用 key 的 `evidence_ledger.json`。
-5. `Read prompts/reference_review_synthesis.md`。若用户只给主题，自动生成主题对应 RQ、检索来源和图表计划；若用户要求按参考综述或计划书合成，则对齐参考综述的数据来源、RQ 和图表类型。不要把系统评测中的“多综述对比”误写成每篇正文必备章节。
-6. `Read prompts/figure_table_handling.md`，根据本次文献统计数据合成图表。参考复现任务默认生成流程图、年度柱状图和双五年 topic 词云；合作字段充分时才用 `render_collaboration_networks.py` 生成真实作者/国家/机构合作图。不得调用异构 author/topic/journal/year 图冒充参考 Figure 7/8。每张已生成图的 report 必须通过；普通综述按 RQ 生成。
-7. `Read prompts/outline_preview.md`，仅在需要用户确认范围或用户明确要求“先给提纲/检索策略”时输出预览；不要把预览命名为研究计划。
-8. `Read prompts/review_builder.md` 与 `prompts/style_reference.md`，撰写正文并按要求落盘；当用户说“写综述/生成综述/撰写研究现状/related work”时，必须进入本步，而不是只交付计划。
-9. `Read prompts/review_self_check.md`，内部自检后修订；不要把自检清单写进正文。
-10. `Read prompts/human_academic_rewrite.md`，对最终正文做人工学术风格重写；不得新增未核验事实，不得把估算、人工编码或二级综述汇总包装成精确统计。
-11. `Read prompts/latex_delivery.md`，生成完整 LaTeX 工程，运行全部图表 report 校验和 `validate_latex_review.py`。失败时自动修订并重跑；只有全部通过才交付。
+4. `Read prompts/literature_search.md`，从至少两个可用来源批量获取约 200--500 条元数据候选，并保留来源失败记录。
+5. `Read prompts/structured_literature_pipeline.md` 和 `references/literature_pipeline.md`，执行归一化、跨库去重、版本合并、筛选、按论点需求升级读取深度、Paper Card、Theme Synthesis 和 Claim–Evidence Store v2。证据权限门禁失败时不得写作。
+6. `Read prompts/reference_review_synthesis.md`。若用户只给主题，自动生成主题对应 RQ、检索来源和图表计划；若用户要求按参考综述或计划书合成，则对齐参考综述的数据来源、RQ 和图表类型。
+7. `Read prompts/figure_table_handling.md`，根据本次文献统计数据合成图表。所有已生成图的 report 必须通过。
+8. `Read prompts/outline_preview.md`，仅在需要用户确认范围或用户明确要求时输出预览。
+9. `Read prompts/review_builder.md` 与 `prompts/style_reference.md`。Writer 只读取 RQ、提纲、Theme Synthesis 和 verified Claim–Evidence，不重新自由推断原始论文。
+10. `Read prompts/review_self_check.md`，执行正文引用审计并修订；不要把自检清单写进正文。
+11. `Read prompts/human_academic_rewrite.md`，重写不得新增未核验事实。
+12. `Read prompts/latex_delivery.md`，运行证据权限、图表和 LaTeX 门禁；只有全部通过才交付。
 
 ## 迭代模式
 
@@ -112,6 +120,9 @@ allowed-tools: Read, Write, Edit, Grep, Glob, WebSearch, Bash
 
 ```
 □ 已读取本轮对应 prompt
+□ 已执行结构化文献流水线；Paper Store 中失败、缺失字段和访问降级均显式记录
+□ DOI/arXiv/标题作者年份去重和版本合并已完成；引用版本与实际读取版本未混淆
+□ 每个重要论点已通过 Claim–Evidence 权限验证，引用深度没有超过读取深度
 □ 用户要求写综述时，交付的是综述正文/综述草稿，而不是研究计划或开题方案
 □ 未编造不存在的文献、作者、年份、DOI、页码或结论
 □ 每个关键论断可追溯到文献或用户材料

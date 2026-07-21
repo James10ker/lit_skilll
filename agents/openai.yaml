@@ -1,7 +1,4 @@
 interface:
-  display_name: "论文综述复现生成"
-  short_description: "从论文独立生成经质检的 LaTeX 综述与图表"
-  brand_color: "#2563EB"
-  default_prompt: "Use $literature-review-skill to independently synthesize the supplied papers into a citation-grounded review, generate and validate the required figures, self-correct until the quality gates pass, and deliver a complete LaTeX project."
-policy:
-  allow_implicit_invocation: true
+  display_name: "证据可追溯文献综述"
+  short_description: "从多数据库检索到全文分级、论点证据验证和LaTeX交付"
+  default_prompt: "Use $literature-review-skill to retrieve and deduplicate the literature, enforce reading-depth permissions, build verified claim–evidence records, and deliver a validated LaTeX review."

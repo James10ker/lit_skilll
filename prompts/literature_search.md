@@ -1,12 +1,14 @@
 # Step 4: 文献检索与筛选
 
-目标：补齐关键文献，记录检索路径，并避免引用不可核验材料。
+目标：获取候选文献元数据并完成初筛；不要在本步骤直接凭搜索结果撰写综述。检索完成后必须进入 `structured_literature_pipeline.md`。
 
 ## 检索策略
 
 - 组合关键词：中文、英文、同义词、上位词、具体方法名、应用场景。
 - 优先权威来源：Google Scholar、Semantic Scholar、PubMed、IEEE Xplore、ACM DL、Springer、ScienceDirect、arXiv、CNKI、万方等。
 - 使用滚雪球法：从高质量综述、经典论文和最新论文的参考文献/被引文献扩展。
+- 默认从 OpenAlex、Crossref、Semantic Scholar、arXiv、PubMed 等可访问接口取得约 200–500 条候选元数据；首版工具至少联合 OpenAlex 与 Crossref。
+- 此阶段只收集题名、作者、年份、来源、摘要、关键词、DOI、arXiv ID、引用量、开放获取状态和 URL，不把索引记录当作全文证据。
 
 ## 参考综述复现检索
 
@@ -77,6 +79,8 @@
 | 文献 | 年份 | 来源 | URL/DOI | 可访问性 | 纳入状态 | 用途 |
 |------|------|------|---------|----------|----------|------|
 
-可访问性填写：全文可读、仅摘要、题录可见、待核验。
+可访问性统一填写：`metadata_only`、`abstract_only`、`section_level`、`fulltext`。旧值“全文可读、仅摘要、题录可见、待核验”只作为输入兼容，不得继续写入新 Paper Store。
+
+候选表不是最终证据库。检索后读取 `prompts/structured_literature_pipeline.md`，生成统一 Paper Store、版本关系、Paper Card、Theme Synthesis 和 Claim–Evidence Store v2。
 
 若无法联网或数据库不可访问，明确说明限制，并基于用户材料继续写作。
