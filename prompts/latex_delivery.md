@@ -15,8 +15,12 @@ outputs/{topic}/
 │   └── topic_wordcloud.png
 ├── data/
 │   ├── included_records.json
+│   ├── paper_store.json
+│   ├── paper_cards.json
+│   ├── theme_syntheses.json
 │   └── evidence_ledger.json
 └── reports/
+    ├── evidence_validation.report.json
     ├── figure_*.report.json
     └── latex_quality.report.json
 ```
@@ -36,7 +40,7 @@ outputs/{topic}/
 
 ## 证据台账
 
-写作前生成 `data/evidence_ledger.json`。每个关键结论记录：
+写作前生成 Claim–Evidence Store v2。完整字段、访问权限矩阵和示例见 `references/literature_pipeline.md`。旧版以下结构仅允许读取兼容，不再作为新任务输出：
 
 ```json
 {
@@ -51,6 +55,18 @@ outputs/{topic}/
 
 没有来源的判断不得进入最终正文；只有二级综述支持时，必须标明是二级证据。topic 若由模型从摘要或全文归纳，应保留文献到 topic 的编码记录，不得包装成作者原始关键词。
 
+先单独运行证据权限门禁；失败时不得生成定稿。`existence_verified` 只证明论文真实存在，`claim_supported` 才表示定位到的内容支持该论点。
+
+正文完成后运行引用审计：
+
+```bash
+python3 tools/run_literature_pipeline.py verify-citations \
+  --input outputs/{topic}/review.tex \
+  --ledger outputs/{topic}/data/evidence_ledger.json \
+  --paper-store outputs/{topic}/data/paper_store.json \
+  --report outputs/{topic}/reports/citation_verification.report.json
+```
+
 ## 硬门禁
 
 完成初稿后运行：
@@ -61,6 +77,7 @@ python3 tools/validate_latex_review.py \
   --report outputs/{topic}/reports/latex_quality.report.json \
   --language english \
   --evidence-ledger outputs/{topic}/data/evidence_ledger.json \
+  --paper-store outputs/{topic}/data/paper_store.json \
   --required-rqs RQ1,RQ2,RQ3,RQ4,RQ5 \
   --figure-report outputs/{topic}/reports/figure_flow.report.json \
   --figure-report outputs/{topic}/reports/figure_temporal.report.json \

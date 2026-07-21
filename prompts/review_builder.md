@@ -38,7 +38,11 @@
 
 - 最终成稿全部使用英语，包括标题、摘要、关键词、章节标题、正文、表格文字、图题、图注及所有图形内文字。
 - 段落主题句明确，段内按“观点 -> 证据 -> 综合判断”推进。
-- 方法部分报告全文、摘要和仅元数据记录的覆盖率；结论强度必须与证据层级匹配，不能把摘要级分析描述为对全部论文的全文综合。
+- Writer 只读取 RQ、已确认提纲、Theme Synthesis 和通过验证的 Claim–Evidence Store；不得重新面对全部原文自由推断，也不得按论文顺序逐篇摘要。
+- 方法部分按 `metadata_only`、`abstract_only`、`section_level`、`fulltext` 报告数量与比例；结论强度必须与证据层级匹配。
+- 写作前 `reports/evidence_validation.report.json` 必须通过。具体数字、方法优劣、局限、因果关系和领域共识必须拥有与 claim 类型匹配的章节级或全文级证据及定位。
+- 只允许把 `support_status=verified` 的论点写成确定事实；partial/uncertain 必须显式降调，insufficient/unverified 不得进入定稿。
+- 将每个 verified claim 的最终完整句子回写到 `manuscript_text`，并记录该句实际使用的 `citation_keys`，供写后审计检查引用邻近性和数字一致性。
 - 引用紧贴具体观点；不要把一串引用堆在段末。
 - 对不一致结论要解释可能原因：数据、样本、评价指标、任务设定、时间背景。
 - 普通综述可主动加入必要图表：分类框架、技术路线、时间线、代表性文献对比表、数据集/指标表、研究空白矩阵。图表是按需增强，不是每篇综述的硬性数量指标。
@@ -60,6 +64,9 @@
 - `outputs/{主题标识}/references.bib`
 - `outputs/{主题标识}/figures/`
 - `outputs/{主题标识}/data/evidence_ledger.json`
+- `outputs/{主题标识}/data/paper_store.json`
+- `outputs/{主题标识}/data/paper_cards.json`
+- `outputs/{主题标识}/data/theme_syntheses.json`
 - `outputs/{主题标识}/reports/`
 
 读取 `prompts/latex_delivery.md` 并执行静态质量门禁。默认不把 Markdown/Word 作为主交付物。只有用户明确要求 Word 时，才额外生成 `.docx`；不得用 Word 交付替代 LaTeX 源稿。

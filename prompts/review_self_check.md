@@ -8,6 +8,9 @@
 - 是否覆盖经典文献、代表性最新文献和用户指定文献。
 - 是否存在编造引用、年份、作者、DOI、页码或结论。
 - 是否把单篇论文结论写成领域共识。
+- 是否把 `existence_verified` 错当成 `claim_supported`。
+- 是否存在引用深度超过读取深度：元数据支撑内容判断、摘要支撑实验数字/方法细节/局限、未读取 Discussion 却评价局限。
+- 具体性能数字是否有 Results/Experiments 与表格、页码或段落定位；领域共识是否至少有多篇独立论文支持。
 - 是否报告全文/摘要/元数据覆盖率，是否把主要依赖标题和摘要的分析夸大为全量全文综述。
 - 是否只有摘要堆叠，缺少比较、综合和批判。
 - 章节之间是否有递进关系。
@@ -22,6 +25,7 @@
 - 图表是否对应 RQ，例如年度趋势对应 RQ1，合作关系对应 RQ3，主题分布或主题变化对应 RQ4/RQ5。
 - 若 WoS、Scopus、ERIC 等参考来源不可访问，是否明确说明访问限制和近似复现来源。
 - 引用格式是否一致。
+- 每个正文重要论点是否映射到 verified claim；citation key 是否可解析且紧邻观点；证据 relation 是否真实支持当前措辞强度。
 - 全文及全部图表可见文字是否均为英语，是否残留中文或双语标签。
 - 最近五年是否截止于最新完整年份，是否误把当前不完整年份纳入窗口。
 - 主题代码、缩写和展示标签是否归一化，是否发生同义标签重复计数。
@@ -37,6 +41,8 @@
 - 每张图的 report 必须通过，且图中统计数字与正文一致。
 - 双五年 topic 窗口必须相邻、不重叠、年限明确，两个窗口都有真实记录和 topic 数据。
 - 每个关键结论必须能映射到 `evidence_ledger.json` 中至少一个可解析引用 key。
+- Claim–Evidence Store v2 必须与 `paper_store.json` 一起通过权限验证；不得只验证论文存在性。
+- 运行 `tools/run_literature_pipeline.py verify-citations`，确保正文 citation、Paper Store、verified claim、证据论文和数字一致。
 - `validate_latex_review.py` 必须返回 0 且报告 `passed=true`。
 - 必须以 `--language english` 运行 `validate_latex_review.py`。
 - 有 LaTeX 编译器时必须编译通过。

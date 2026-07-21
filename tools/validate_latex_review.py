@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from literature_pipeline.claim_evidence_store import validate_store as validate_claim_evidence_store
+
 
 SECTION_ALIASES = {
     "introduction": {"introduction", "background", "overview", "引言", "绪论", "研究背景"},
@@ -191,6 +193,7 @@ def _validate_evidence_ledger(
     bibliography_keys: set[str],
     required_rqs: tuple[str, ...],
     errors: list[str],
+    paper_store_path: Path | None = None,
 ) -> dict[str, object]:
     if not ledger_path.exists():
         errors.append(f"Evidence ledger does not exist: {ledger_path}")
@@ -204,6 +207,49 @@ def _validate_evidence_ledger(
     if not isinstance(claims, list):
         errors.append("Evidence ledger must be a JSON list or an object with a claims list.")
         return {"claim_count": 0, "covered_rqs": []}
+
+    if isinstance(payload, dict) and str(payload.get("schema_version", "")).startswith("2"):
+        if paper_store_path is None:
+            errors.append("Claim–Evidence ledger v2 requires --paper-store.")
+            return {"claim_count": len(claims), "covered_rqs": [], "schema_version": "2.0", "permission_validation_passed": False}
+        try:
+            permission_report = validate_claim_evidence_store(ledger_path, paper_store_path)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"Claim–Evidence permission validation failed: {exc}")
+            return {"claim_count": len(claims), "covered_rqs": [], "schema_version": "2.0", "permission_validation_passed": False}
+        errors.extend(f"Claim–Evidence: {item}" for item in permission_report["errors"])
+        paper_payload = json.loads(paper_store_path.read_text(encoding="utf-8"))
+        raw_papers = paper_payload.get("papers", paper_payload.get("records", paper_payload)) if isinstance(paper_payload, dict) else paper_payload
+        citation_keys_by_paper = {
+            str(item.get("paper_id")): str(item.get("citation_key") or "").strip()
+            for item in raw_papers if isinstance(item, dict)
+        }
+        covered_rqs: set[str] = set()
+        for index, claim in enumerate(claims, start=1):
+            if not isinstance(claim, dict):
+                continue
+            claim_id = str(claim.get("claim_id", "")).strip()
+            for rq in claim.get("research_questions") or []:
+                covered_rqs.add(str(rq).strip().upper())
+            for evidence in claim.get("evidence") or []:
+                if not isinstance(evidence, dict):
+                    continue
+                paper_id = str(evidence.get("paper_id") or "")
+                key = citation_keys_by_paper.get(paper_id, "")
+                if not key:
+                    errors.append(f"Evidence claim {claim_id or f'#{index}'} paper {paper_id or '<missing>'} has no citation_key in the paper store.")
+                elif key not in bibliography_keys:
+                    errors.append(f"Evidence claim {claim_id or f'#{index}'} references unresolved bibliography key: {key}")
+        for rq in required_rqs:
+            if rq not in covered_rqs:
+                errors.append(f"Evidence ledger does not cover required research question: {rq}")
+        return {
+            "claim_count": len(claims),
+            "covered_rqs": sorted(covered_rqs),
+            "schema_version": "2.0",
+            "permission_validation_passed": permission_report["passed"],
+            "verified_claim_count": permission_report["metrics"]["verified_claim_count"],
+        }
 
     covered_rqs: set[str] = set()
     for index, claim in enumerate(claims, start=1):
@@ -264,6 +310,7 @@ def validate_latex_review(
     min_words: int = 0,
     min_figures: int = 0,
     evidence_ledger: Path | None = None,
+    paper_store: Path | None = None,
     required_rqs: tuple[str, ...] = (),
     figure_reports: tuple[Path, ...] = (),
     language: str = "any",
@@ -339,7 +386,10 @@ def validate_latex_review(
     ledger_metrics = {"claim_count": 0, "covered_rqs": []}
     if evidence_ledger is not None:
         ledger_path = evidence_ledger if evidence_ledger.is_absolute() or evidence_ledger.exists() else base_dir / evidence_ledger
-        ledger_metrics = _validate_evidence_ledger(ledger_path, bibliography_keys, normalized_rqs, errors)
+        resolved_paper_store = None
+        if paper_store is not None:
+            resolved_paper_store = paper_store if paper_store.is_absolute() or paper_store.exists() else base_dir / paper_store
+        ledger_metrics = _validate_evidence_ledger(ledger_path, bibliography_keys, normalized_rqs, errors, resolved_paper_store)
     elif normalized_rqs:
         errors.append("Required research questions were specified without an evidence ledger.")
     resolved_report_paths = tuple(
@@ -403,6 +453,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--min-words", type=int, default=0, help="Minimum acceptable word count.")
     parser.add_argument("--min-figures", type=int, default=0, help="Minimum acceptable figure count.")
     parser.add_argument("--evidence-ledger", type=Path, help="Evidence ledger JSON, relative to the .tex file or absolute.")
+    parser.add_argument("--paper-store", type=Path, help="Paper store required by Claim–Evidence ledger schema v2.")
     parser.add_argument("--required-rqs", default="", help="Comma-separated RQ identifiers that the ledger must cover.")
     parser.add_argument("--figure-report", action="append", default=[], type=Path, help="Figure report JSON that must have validation.passed=true; repeat as needed.")
     parser.add_argument(
@@ -421,6 +472,7 @@ def main(argv: list[str] | None = None) -> int:
         min_words=args.min_words,
         min_figures=args.min_figures,
         evidence_ledger=args.evidence_ledger,
+        paper_store=args.paper_store,
         required_rqs=tuple(args.required_rqs.split(",")),
         figure_reports=tuple(args.figure_report),
         language=args.language,
